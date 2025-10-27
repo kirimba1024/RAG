@@ -4,6 +4,8 @@ import time
 import html
 from pathlib import Path
 from anthropic import Anthropic
+from llama_index.core.prompts.chat_prompts import CHAT_REFINE_PROMPT
+from llama_index.llms.openai.utils import CHAT_MODELS
 
 from utils import CLAUDE_MODEL, ANTHROPIC_API_KEY, load_prompt, setup_logging
 from tools import (
@@ -18,19 +20,15 @@ from tools import (
 logger = setup_logging(Path(__file__).stem)
 
 BASE_LLM = Anthropic(api_key=ANTHROPIC_API_KEY)
-PHASE1_GATHER = load_prompt("prompts/phase1_gather.txt")
-PHASE2_ANSWER = load_prompt("prompts/phase2_answer.txt")
+CHAT_GATHER = load_prompt("prompts/chat_system_gather.txt")
+CHAT_ANSWER = load_prompt("prompts/chat_system_answer.txt")
 CACHE_BLOCK = {"cache_control": {"type": "ephemeral"}}
 TOOLS_MAP = {
     "main_search": lambda p: main_search(p["question"], p.get("path_prefix", "")),
-    "grep_files": lambda p: grep_files(
-        p["pattern"], p.get("path_prefix", ""), p.get("case_sensitive", True)
-    ),
+    "grep_files": lambda p: grep_files(p["pattern"], p.get("path_prefix", ""), p.get("case_sensitive", True)),
     "browse_path": lambda p: browse_path(p.get("path", "")),
     "query_graph": lambda p: query_graph(p["query"], p.get("limit", 20)),
-    "read_file_lines": lambda p: read_file_lines(
-        p["path"], p["start_line"], p["end_line"]
-    ),
+    "read_file_lines": lambda p: read_file_lines(p["path"], p["start_line"], p["end_line"]),
 }
 
 
@@ -52,15 +50,16 @@ def execute_tool(tool_name, tool_input):
 def chat(message, history, summary):
     logger.info(f"💬 {message}...")
     accumulated_text = ""
-    _ui = lambda: (history + [[message, accumulated_text]], summary, "")
     messages = [{"role": "user", "content": [{"type": "text", "text": message}]}]
     logger.info(f"🔄 Этап 1: GATHER")
+    system_gather = system_block(CHAT_GATHER, summary)
+    system_answer = system_block(CHAT_ANSWER, summary)
     assistant_content = []
     current_text = ""
     current_tool = None
     with BASE_LLM.messages.stream(
         model=CLAUDE_MODEL,
-        system=system_block(PHASE1_GATHER, summary),
+        system=system_gather,
         messages=messages,
         tools=TOOLS_SCHEMA,
         max_tokens=4096,
@@ -80,7 +79,7 @@ def chat(message, history, summary):
                 if event.delta.type == "text_delta":
                     current_text += event.delta.text
                     accumulated_text += event.delta.text
-                    yield _ui()
+                    yield history + [[message, accumulated_text]], summary, ""
                 elif event.delta.type == "input_json_delta":
                     current_tool["input"] += event.delta.partial_json
             elif event.type == "content_block_stop":
@@ -98,7 +97,7 @@ def chat(message, history, summary):
     tool_uses = [b for b in assistant_content if b.get("type") == "tool_use"]
     if not tool_uses:
         logger.error(f"⚠️ ОШИБКА: Этап 1 не вернул инструменты!")
-        yield _ui()
+        yield history + [[message, accumulated_text]], summary, ""
         return
     logger.info(f"📋 Выполнение {len(tool_uses)} инструментов")
     tool_results = []
@@ -116,7 +115,7 @@ def chat(message, history, summary):
             f"</details>\n"
             f"</details>\n"
         )
-        yield _ui()
+        yield history + [[message, accumulated_text]], summary, ""
         tool_results.append(
             {
                 "type": "tool_result",
@@ -127,10 +126,10 @@ def chat(message, history, summary):
     messages.append({"role": "assistant", "content": assistant_content})
     messages.append({"role": "user", "content": tool_results})
     logger.info(f"🔄 Этап 2: ANSWER")
-    new_summary = ""
+    summary = ""
     with BASE_LLM.messages.stream(
         model=CLAUDE_MODEL,
-        system=system_block(PHASE2_ANSWER, summary),
+        system=system_answer,
         messages=messages,
         tools=TOOLS_SCHEMA,
         max_tokens=4096,
@@ -138,11 +137,10 @@ def chat(message, history, summary):
         for event in stream:
             if event.type == "content_block_delta" and event.delta.type == "text_delta":
                 accumulated_text += event.delta.text
-                new_summary += event.delta.text
-                yield _ui()
+                summary += event.delta.text
+                yield history + [[message, accumulated_text]], summary, ""
 
-    updated_summary = new_summary
-    yield _ui()
+    yield history + [[message, accumulated_text]], summary, ""
 
 
 with gr.Blocks(title="RAG Assistant") as demo:
