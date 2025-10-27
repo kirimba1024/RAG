@@ -1,0 +1,56 @@
+{
+  "settings": {
+    "analysis": {
+      "filter": {
+        "russian_stop":   { "type": "stop", "stopwords": "_russian_" },
+        "russian_stemmer":{ "type": "snowball", "language": "russian" },
+        "wdg": {
+          "type": "word_delimiter_graph",
+          "preserve_original": true,
+          "split_on_case_change": true,
+          "split_on_numerics": true,
+          "generate_word_parts": true,
+          "generate_number_parts": true
+        }
+      },
+      "analyzer": {
+        "code_friendly": {
+          "type": "custom",
+          "tokenizer": "standard",
+          "filter": ["lowercase", "wdg"]
+        },
+        "ru_text": {
+          "type": "custom",
+          "tokenizer": "standard",
+          "filter": ["lowercase", "stop", "russian_stop", "russian_stemmer"]
+        },
+        "en_text": {
+          "type": "english"
+        }
+      }
+    }
+  },
+  "mappings": {
+    "properties": {
+      "text": {
+        "type": "text",
+        "analyzer": "code_friendly",
+        "fields": {
+          "ru": { "type": "text", "analyzer": "ru_text" },
+          "en": { "type": "text", "analyzer": "en_text" }
+        }
+      },
+
+      "doc_id": { "type": "keyword" },
+
+      "embedding": {
+        "type": "dense_vector",
+        "dims": 1024,
+        "index": true,
+        "similarity": "cosine"
+      },
+
+      "metadata": { "type": "object", "enabled": true }
+    }
+  }
+}

@@ -1,0 +1,74 @@
+# ============================================================
+# 🧠 RAG-Assistant — .gitignore
+# ============================================================
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.dll
+*.dylib
+
+# Virtual environment
+.venv/
+venv/
+env/
+ENV/
+
+# --- OS / IDE ---
+.DS_Store
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+Thumbs.db
+Desktop.ini
+
+# --- Build / dist ---
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# --- Logs ---
+*.log
+logs/
+
+# --- Project data & cache ---
+data/
+!data/.gitkeep
+
+knowledge/
+!knowledge/.gitkeep
+
+storage/
+cache/
+tmp/
+.checkpoints/
+__cache__/
+
+# --- Jupyter ---
+.ipynb_checkpoints/
+
+# --- LlamaIndex / Embeddings ---
+*.jsonl
+*.faiss
+index_store/
+vector_store/
+*.idx
+*.pt
+*.bin
+
+# --- Temp files ---
+*.pkl
+*.tmp
+*.bak
+~$*
+*.lock
+
+# --- Environment ---
+.env

@@ -1,0 +1,155 @@
+# ============================================================
+# .ignore — очистка артефактов в /knowledge/
+# Используется: ignore.py → mask.py → check_secrets.py
+# ============================================================
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+.tox/
+htmlcov/
+*.egg-info/
+.eggs/
+
+# --- Java / Gradle / Maven ---
+build/
+.gradle/
+target/
+*.class
+*.jar
+*.war
+*.ear
+bin/
+out/
+.mvn/
+.m2/
+
+# --- Frontend / Node.js / TypeScript ---
+node_modules/
+dist/
+.next/
+.nuxt/
+.vite/
+.turbo/
+.parcel-cache/
+.webpack/
+.cache/
+*.tsbuildinfo
+coverage/
+.nyc_output/
+.docusaurus/
+
+# --- Lock-файлы и зависимости ---
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+Cargo.lock
+Gemfile.lock
+composer.lock
+poetry.lock
+pipfile.lock
+go.sum
+
+# --- Go ---
+vendor/
+go.work.sum
+
+# --- Rust ---
+target/
+Cargo.lock
+
+# --- PHP / Composer ---
+vendor/
+composer.lock
+
+# --- Ruby / Bundler ---
+vendor/bundle/
+.bundle/
+
+# --- .NET / C# ---
+bin/
+obj/
+*.dll
+*.exe
+*.pdb
+packages/
+.vs/
+
+# --- IDE ---
+.idea/
+.vscode/
+.settings/
+.project
+.classpath
+*.iml
+*.suo
+*.user
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*.tmp
+desktop.ini
+
+# --- Logs и отладка ---
+*.log
+*.log.*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.stackdump
+
+# --- Временные и бэкапы ---
+*.bak
+*.backup
+*.old
+*.orig
+*~
+.#*
+
+# --- Test coverage и отчеты ---
+coverage/
+.coverage
+htmlcov/
+test-results/
+junit.xml
+*.lcov
+
+# --- Docker (если попадут артефакты) ---
+.dockerignore
+
+# --- Database dumps ---
+*.sql
+*.dump
+*.sqlite
+*.sqlite3
+*.db
+
+# --- Environment и секреты ---
+*.env.local
+*.env.*.local
+*.key
+*.pem
+*.p12
+*.pfx
+.secrets/
+
+# --- CI/CD артефакты ---
+.terraform/
+.terragrind/
+
+# --- Jupyter ---
+.ipynb_checkpoints/
+
+# --- Прочие временные ---
+*.pid
+*.seed
+*.sock
+.DS_Store?

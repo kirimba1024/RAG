@@ -1,0 +1,36 @@
+[LLM: читай полностью перед правкой, обновляй при изменении логики]
+
+@docstring/_README.txt
+
+НАЗВАНИЕ:
+Hybrid Retriever — гибридный поиск с reranking
+
+SUMMARY:
+Нативный гибридный поиск в Elasticsearch (kNN + BM25) с SBERT-reranking.
+Один запрос к ES объединяет векторный и полнотекстовый поиск; поддержка фильтрации по префиксу пути.
+ES клиент создаётся локально. Граф знаний (Neo4j) используется через tools.query_graph.
+
+ВЫВОДЫ:
+- Локальные объекты: ES клиент, Settings.embed_model, RERANKER создаются здесь.
+- Settings.embed_model загружается здесь для векторизации запросов (используется в HybridESRetriever._retrieve).
+- HybridESRetriever: единый ES-запрос с knn + query.bool.should (ES объединяет скоры нативно).
+- num_candidates = top_k * 5 для HNSW recall при фильтрации.
+- Фильтрация: prefix query по doc_id применяется к knn и query на уровне ES.
+- Reranking: SBERT top_n=10 финализирует ранжирование.
+- retrieve_fusion_nodes: entry point для гибридного поиска (top_k=30 → rerank to 10).
+- metadata из ES хранится в отдельном объекте "metadata" (chunk_id, chunk_total, start_line, end_line, file_path); doc_id на верхнем уровне.
+- normal_prefix: убирает лидирующие слэши/точки.
+- Fail-fast без подстраховок: отсутствие обязательных полей (doc_id, chunk_id, chunk_total, start_line, end_line) вызывает KeyError.
+
+АНТИПАТТЕРНЫ:
+- Вызывать два отдельных запроса (kNN, BM25) и объединять в Python — ES делает это эффективнее.
+- Использовать num_candidates = top_k без запаса — теряется recall при фильтрации.
+- Забывать применить фильтр и к knn, и к query — часть результатов будет вне scope.
+- Передавать embedding в metadata ноды — раздувает память без пользы.
+
+ЗАМЕТКИ:
+- DEVICE: cuda > mps > cpu (автоопределение для reranker).
+- ES multi_match: буст для ru^1.3, en^1.2 над базовым text^1.0.
+- nodes_to_text: форматирует ноды как "doc_id [chunk N/M] Lines X-Y:\ntext".
+- Neo4j граф: используется через tools.query_graph с прямыми Cypher запросами, не через retriever.
+

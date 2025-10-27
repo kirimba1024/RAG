@@ -1,0 +1,41 @@
+[LLM: читай полностью перед правкой, обновляй при изменении логики]
+
+@docstring/_README.txt
+
+НАЗВАНИЕ:
+Knowledge Base Builder — инкрементальная индексация с эмбеддингами
+
+SUMMARY:
+Инкрементальная индексация knowledge/ в два хранилища: Elasticsearch (векторы + BM25 + chunks текста) и Neo4j (граф знаний).
+Опирается на манифест с SHA-256: переиндексирует только изменённые файлы, удаляет отсутствующие.
+Fail-fast на уровне файла; идемпотентность через порядок операций.
+ES хранит chunks для поиска, Neo4j хранит только entities+relationships.
+Все клиенты (ES, GRAPH_STORE, GRAPH_EXTRACTOR_LLM, PROP_GRAPH_INDEX) создаются локально.
+
+ВЫВОДЫ:
+- Архитектура: ES хранит chunks с embeddings (поиск), Neo4j хранит entities+relationships (граф).
+- Локальные объекты: ES, GRAPH_STORE, Settings.embed_model, GRAPH_EXTRACTOR_LLM, PROP_GRAPH_INDEX создаются здесь.
+- Settings.embed_model загружается здесь для генерации embeddings chunks (используется в add_file).
+- Конвейер: load_doc → split_doc_to_nodes + PROP_GRAPH_INDEX.insert → upsert манифеста.
+- ES индексация: CodeSplitter для кода, SentenceSplitter для остального; helpers.bulk с _op_type="index".
+- Neo4j индексация: SimpleLLMPathExtractor извлекает триплеты из целого документа.
+- include_text=False, embed_kg_nodes=False в PropertyGraphIndex.
+- Манифест: path, hash, updated_at; upsert ПОСЛЕ успешной записи в оба хранилища (идемпотентность).
+- Переиндексация: delete → add; fail-fast на уровне файла.
+- ID ноды ES: "rel_path#chunk/total" для фильтрации по doc_id.
+- Metadata чанков: start_line, end_line, chunk_id, chunk_total всегда заполняются; fallback (0, total_lines) если чанк не найден.
+- process_files: set union путей из манифеста и ФС; обработка ошибок без остановки процесса.
+- OCR: TesseractImageReader lang="rus+eng", fallback при TesseractError.
+- Безопасность: Path.is_relative_to(KNOWLEDGE_ROOT) защита от directory traversal.
+
+АНТИПАТТЕРНЫ:
+- Обновлять манифест до вставки в хранилища — теряется идемпотентность.
+- Поглощать исключения в add_file/delete_file — маскирует сбои.
+- Терять metadata[0] при merge документов — теряется file_path для трассировки.
+- Абсолютные пути в манифесте — нарушает переносимость.
+
+ЗАМЕТКИ:
+- Форматы: PDF, DOCX, PPTX, HTML, EPUB, RTF, CSV, XLS/XLSX, изображения через OCR.
+- Код: Python, JS/TS/TSX, Java, Kotlin, Go, Rust, C/C++, C#, PHP, Ruby, Swift, Scala, Objective-C, Bash.
+- Остальные: SafePlainTextReader с UTF-8 errors="ignore".
+

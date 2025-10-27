@@ -1,0 +1,19 @@
+[LLM: читай полностью перед правкой, обновляй при изменении логики]
+
+@docstring/_README.txt
+
+НАЗВАНИЕ:
+Elasticsearch Docker Image — обёртка с auto-init индексов
+
+SUMMARY:
+ES 8.12.0 с автосозданием индексов rag и manifest через entrypoint.
+
+ВЫВОДЫ:
+- curl уже в базовом образе (/usr/bin/curl) — apt-get update может зависать, не устанавливать.
+- USER root только для COPY, затем USER elasticsearch.
+- entrypoint.sh в фоне (create_indices &) до официального docker-entrypoint.sh.
+
+АНТИПАТТЕРНЫ:
+- apt-get в Dockerfile — риск зависания сборки.
+- Запускать create_indices синхронно.
+
