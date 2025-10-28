@@ -27,10 +27,12 @@ from utils import (
     NEO4J_BOLT_URL, NEO4J_USER, NEO4J_PASS,
     CLAUDE_MODEL, ANTHROPIC_API_KEY, EMBED_MODEL, load_prompt
 )
+from ast_extractor import ASTExtractor
 
 logger = setup_logging(Path(__file__).stem)
 
 OCR_LANG = "rus+eng"
+AST_EXTRACTOR = ASTExtractor()
 
 ES = Elasticsearch(ES_URL, request_timeout=30, max_retries=3, retry_on_timeout=True)
 GRAPH_STORE = Neo4jPropertyGraphStore(url=NEO4J_BOLT_URL, username=NEO4J_USER, password=NEO4J_PASS)
@@ -65,8 +67,17 @@ LANG_BY_EXT = {
     ".c": "c", ".h": "c",
     ".cpp": "cpp", ".cc": "cpp", ".cxx": "cpp", ".hpp": "cpp", ".hh": "cpp",
     ".cs": "c_sharp", ".php": "php", ".rb": "ruby", ".swift": "swift",
-    ".scala": "scala", ".m": "objective_c", ".mm": "objective_cpp",
+    ".scala": "scala", ".groovy": "groovy", ".m": "objective_c", ".mm": "objective_cpp",
     ".sh": "bash", ".bash": "bash", ".zsh": "bash",
+    ".cmd": "cmd", ".bat": "cmd",
+    ".r": "r", ".lua": "lua",
+    ".hs": "haskell",
+    ".toml": "toml",
+    ".sass": "sass", ".scss": "scss",
+    ".jl": "julia",
+    ".ps1": "powershell",
+    ".sql": "sql", ".yaml": "yaml", ".yml": "yaml",
+    ".xml": "xml", ".html": "html", ".htm": "html",
 }
 
 SENTENCE_SPLITTER = SentenceSplitter(chunk_size=800, chunk_overlap=200, paragraph_separator="\n\n")
@@ -164,13 +175,27 @@ def to_es_action(node, doc, embedding):
         "metadata": node.metadata,
     }
 
+def enrich_doc_with_ast(doc: Document):
+    """Обогащает документ AST структурой для кодовых файлов"""
+    ext = Path(doc.doc_id).suffix.lower()
+    lang = LANG_BY_EXT.get(ext)
+    
+    if lang and doc.text.strip():
+        ast_structure = AST_EXTRACTOR.extract_ast_structure(doc.text, lang)
+        if ast_structure:
+            enriched_text = f"{doc.text}\n\n# AST STRUCTURE:\n{ast_structure}"
+            return Document(text=enriched_text, metadata=doc.metadata, doc_id=doc.doc_id)
+    
+    return doc
+
 def load_doc(rel_path):
     path = (KNOWLEDGE_ROOT / rel_path).resolve()
     ext = path.suffix.lower()
     extractor = FILE_EXTRACTOR.get(ext, SafePlainTextReader())
     docs = extractor.load_data(str(path))
     text = "\n\n".join([(d.text or "") for d in docs])
-    return Document(text=text, metadata=docs[0].metadata, doc_id=rel_path)
+    doc = Document(text=text, metadata=docs[0].metadata, doc_id=rel_path)
+    return enrich_doc_with_ast(doc)
 
 def get_manifest_hash(rel_path):
     try:

@@ -146,9 +146,10 @@ RETURN n.name
 
 ## 📚 Поддерживаемые форматы
 
-**Код:** Python, Java, JavaScript/TypeScript, JSX/TSX, Go, Rust, C/C++, C#, PHP, Ruby, Swift, Scala, Kotlin, Bash  
+**Код:** Python, Java, JavaScript/TypeScript, JSX/TSX, Go, Rust, C/C++, C#, PHP, Ruby, Swift, Scala, Kotlin, Bash, Haskell, Julia, PowerShell, R, Lua  
+**Стили:** Sass/SCSS  
 **Документы:** Markdown, TXT, YAML, JSON, XML  
-**Конфигурация:** Docker, Gradle, Maven, package.json, requirements.txt
+**Конфигурация:** Docker, Gradle, Maven, package.json, requirements.txt, TOML
 
 ## 🛡️ Безопасность
 
