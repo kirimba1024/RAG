@@ -31,8 +31,8 @@ SUPPORTED_LANGUAGES = {
     "bash": "bash",
     "sh": "bash",
     "zsh": "bash",
-    "cmd": "cmd",
-    "bat": "cmd",
+    "cmd": "bash",
+    "bat": "bash",
     "hs": "haskell",
     "toml": "toml",
     "sass": "sass",
@@ -85,6 +85,14 @@ NODE_KINDS = {
         "enum":   ["enum_item"],
         "impl":   ["impl_item"],
         "func":   ["function_item"],
+    },
+    "cpp": {
+        "import": ["preproc_include"],
+        "namespace": ["namespace_definition"],
+        "class":  ["class_specifier"],
+        "struct": ["struct_specifier"],
+        "func": ["function_definition"],
+        "method": ["function_definition"],
     },
     "csharp": {
         "import": ["using_directive"],
@@ -154,6 +162,80 @@ NODE_KINDS = {
     },
     "json": {
         "key": ["pair"],
+    },
+    "kotlin": {
+        "import": ["import_declaration"],
+        "class": ["class_declaration"],
+        "func": ["function_declaration"],
+        "method": ["function_declaration"],
+    },
+    "scala": {
+        "import": ["import_declaration"],
+        "class": ["class_declaration"],
+        "func": ["function_declaration"],
+        "method": ["function_declaration"],
+    },
+    "groovy": {
+        "import": ["import_statement", "import_declaration"],
+        "class": ["class_declaration", "class_specifier"],
+        "func": ["function_declaration", "function_definition"],
+        "method": ["function_declaration", "method_declaration"],
+    },
+    "r": {
+        "import": ["library_call", "require_call"],
+        "func": ["function_definition"],
+        "variable": ["assignment_expression"],
+    },
+    "lua": {
+        "import": ["call_expression"],
+        "func": ["function_declaration"],
+        "local_func": ["local_function_declaration"],
+        "module": ["table_constructor"],
+    },
+    "haskell": {
+        "import": ["import_declaration"],
+        "module": ["module"],
+        "type": ["type_declaration"],
+        "class": ["class_declaration"],
+        "func": ["function_declaration"],
+    },
+    "julia": {
+        "import": ["import_statement", "using_statement"],
+        "module": ["module"],
+        "struct": ["struct_definition"],
+        "func": ["function_definition"],
+    },
+    "powershell": {
+        "import": ["using_statement"],
+        "class": ["class_declaration"],
+        "func": ["function_definition"],
+        "method": ["function_definition"],
+    },
+    "sql": {
+        "func": ["function_call", "call_expression"],
+        "table": ["table_reference", "table_name", "identifier"],
+    },
+    "dart": {
+        "import": ["import_directive", "import_declaration"],
+        "class": ["class_declaration", "class_specifier"],
+        "func": ["function_declaration", "function_definition"],
+        "method": ["method_declaration", "function_declaration"],
+    },
+    "sass": {
+        "selector": ["selector"],
+        "mixin": ["mixin_declaration"],
+        "func": ["function_declaration"],
+        "variable": ["variable_declaration"],
+    },
+    "cmd": {
+        "func": ["function_definition"],
+        "calls": ["command"],
+        "label": ["label"],
+    },
+    "bat": {
+        "func": ["function_definition"],
+        "calls": ["command"],
+        "label": ["label"],
     },
 }
 
@@ -349,6 +431,23 @@ class ASTExtractor:
                 result.append("TAG:")
                 for item in by_kind["tag"][:20]:
                     result.append(f"  {item['name'] or item['type']}")
+        
+        # CALLS и LABEL для cmd/bat
+        if "calls" in by_kind:
+            result.append("CALLS:")
+            for item in by_kind["calls"]:
+                result.append(f"  {item['name'] or item['type']}")
+        
+        if "label" in by_kind:
+            result.append("LABEL:")
+            for item in by_kind["label"]:
+                result.append(f"  {item['name'] or item['type']}")
+        
+        # VARIABLE для R
+        if "variable" in by_kind:
+            result.append("VARIABLE:")
+            for item in by_kind["variable"]:
+                result.append(f"  {item['name'] or item['type']}")
         
         return "\n".join(result) if result else ""
 
