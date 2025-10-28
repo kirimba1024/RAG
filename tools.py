@@ -75,8 +75,7 @@ def execute_command(command: str) -> str:
         read_only=True,
         network_mode="none",
         remove=True,
-        detach=False,
-        timeout=30
+        detach=False
     )
     return container.decode('utf-8')
 
