@@ -46,7 +46,12 @@ def test_ast_extraction():
         'test_yaml.yaml': 'yaml',
         'test_html.html': 'html',
         'test_json.json': 'json',
-        'test_sql.sql': 'sql'
+        'test_sql.sql': 'sql',
+        'test_dart.dart': 'dart',
+        'test_sass.sass': 'sass',
+        'test_yml.yml': 'yaml',
+        'test_bat.bat': 'cmd',
+        'test_zsh.zsh': 'bash'
     }
     
     print("🧪 Testing AST extraction for all supported languages\n")
@@ -153,7 +158,12 @@ def test_language_detection():
         '.yaml': 'yaml',
         '.html': 'html',
         '.json': 'json',
-        '.sql': 'sql'
+        '.sql': 'sql',
+        '.dart': 'dart',
+        '.sass': 'sass',
+        '.yml': 'yaml',
+        '.bat': 'cmd',
+        '.zsh': 'bash'
     }
     
     # Import SUPPORTED_LANGUAGES from ast_extractor module

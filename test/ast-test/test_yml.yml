@@ -1,0 +1,83 @@
+# RAG Assistant Configuration (YML format)
+name: rag-assistant
+version: 1.0.0
+description: RAG Assistant with AST extraction and multi-language support
+
+# Application settings
+app:
+  name: "RAG Assistant"
+  version: "1.0.0"
+  debug: true
+  port: 8080
+  host: "0.0.0.0"
+
+# Database configuration
+database:
+  type: postgresql
+  host: localhost
+  port: 5432
+  name: rag_assistant
+  username: ${DB_USERNAME:rag_user}
+  password: ${DB_PASSWORD:rag_password}
+  ssl: false
+  pool:
+    min_size: 5
+    max_size: 20
+    timeout: 30
+
+# Elasticsearch configuration
+elasticsearch:
+  url: "http://localhost:9200"
+  index_name: "rag_documents"
+  settings:
+    number_of_shards: 1
+    number_of_replicas: 0
+    analysis:
+      analyzer:
+        custom_analyzer:
+          type: custom
+          tokenizer: standard
+          filter: [lowercase, stop]
+
+# Neo4j configuration
+neo4j:
+  uri: "bolt://localhost:7687"
+  username: "neo4j"
+  password: ${NEO4J_PASSWORD:password}
+  database: "neo4j"
+
+# AI/ML configuration
+ai:
+  anthropic:
+    api_key: ${ANTHROPIC_API_KEY}
+    model: "claude-3-sonnet-20240229"
+    max_tokens: 4096
+    temperature: 0.7
+  
+  embeddings:
+    model: "BAAI/bge-m3"
+    device: "auto"
+    normalize: true
+
+# Logging configuration
+logging:
+  level:
+    root: INFO
+    com.example.rag: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+  file:
+    name: "logs/rag-assistant.log"
+    max_size: 100MB
+    max_history: 30
+
+# Security configuration
+security:
+  jwt:
+    secret: ${JWT_SECRET:your-secret-key}
+    expiration: 86400
+  cors:
+    allowed_origins: ["http://localhost:3000", "http://localhost:8080"]
+    allowed_methods: ["GET", "POST", "PUT", "DELETE"]
+    allowed_headers: ["*"]
