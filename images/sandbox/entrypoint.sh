@@ -10,21 +10,19 @@ copy_knowledge_data() {
   # Проверяем, есть ли данные в /tmp/knowledge (если переданы через volume)
   if [ -d "/tmp/knowledge" ] && [ "$(ls -A /tmp/knowledge)" ]; then
     echo "[sandbox] Found knowledge data in /tmp/knowledge, copying..."
-    cp -r /tmp/knowledge/* /app/ 2>/dev/null || true
+    cp -r /tmp/knowledge/* / 2>/dev/null || true
     echo "[sandbox] Knowledge data copied successfully"
   else
     echo "[sandbox] No external knowledge data found, using empty directory"
-    # Создаем базовую структуру
-    mkdir -p /app
-    echo "# RAG Sandbox" > /app/README.md
-    echo "This is a sandbox environment for RAG operations." >> /app/README.md
+    echo "# RAG Sandbox" > /README.md
+    echo "This is a sandbox environment for RAG operations." >> /README.md
   fi
   
   # Устанавливаем права доступа
-  chmod -R 755 /app
-  chown -R nobody:nobody /app
+  chmod -R 755 /
+  chown -R nobody:nobody /
   
-  echo "[sandbox] Knowledge data ready at /app"
+  echo "[sandbox] Knowledge data ready at root"
   echo "[sandbox] Available commands: grep, find, awk, sed, bash, curl, wget, jq, tree, file, git, diffutils"
 }
 

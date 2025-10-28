@@ -48,6 +48,4 @@ services:
     image: rag-sandbox:stable
     volumes:
       - ./knowledge:/tmp/knowledge:ro
-    environment:
-      - KNOWLEDGE_ROOT=/app
     restart: unless-stopped
