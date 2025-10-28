@@ -56,7 +56,9 @@ def test_ast_extraction():
     results = []
     
     for source_file in sources_dir.glob("test_*"):
-        if source_file.suffix not in lang_map:
+        # Используем ignore case для расширения
+        suffix_lower = source_file.suffix.lower()
+        if suffix_lower not in lang_map:
             continue
             
         print(f"🧪 Testing {source_file.name}...")
@@ -66,7 +68,7 @@ def test_ast_extraction():
             content = f.read()
         
         # Получаем язык
-        language = lang_map[source_file.suffix]
+        language = lang_map[suffix_lower]
         
         # Генерируем результат
         result = extractor.outline_short(content, language)
