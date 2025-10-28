@@ -5,7 +5,9 @@
 from pathlib import Path
 from neo4j import GraphDatabase
 from ast_extractor import ASTExtractor
-from build import LANG_BY_EXT
+from utils import LANG_BY_EXT, TREE_SITTER_NAMES, setup_logging
+
+logger = setup_logging(Path(__file__).stem)
 
 class GraphManager:
     """Менеджер для работы с Neo4j графом"""
@@ -104,21 +106,33 @@ class GraphManager:
         """, file_path=file_path)
 
     def ingest_ast_to_neo4j(self, rel_path: str, code: str):
-        ext = Path(rel_path).suffix.lower()
-        lang = LANG_BY_EXT.get(ext)
-        if not lang or not code.strip():
-            return
-        rows = self._ast_nodes_raw(code, lang)
-        if not rows:
-            return
-        with self.driver.session() as s:
-            s.execute_write(self._ensure_constraints)
-            s.execute_write(self._delete_ast_for_file, rel_path)
-            # батчим, чтобы не уткнуться в слишком большой UNWIND
-            B = 5000
-            for i in range(0, len(rows), B):
-                chunk = rows[i:i+B]
-                s.execute_write(self._upsert_nodes, rel_path, lang, chunk)
-                s.execute_write(self._upsert_edges, rel_path, chunk)
-            # Строим семантические связи сразу после заливки AST
-            s.execute_write(self._build_semantic_edges, rel_path)
+        try:
+            ext = Path(rel_path).suffix.lower()
+            lang = LANG_BY_EXT.get(ext)
+            if not lang or not code.strip():
+                return
+            
+            # Получаем tree-sitter имя для языка
+            ts_lang = TREE_SITTER_NAMES.get(lang)
+            if not ts_lang:
+                logger.warning(f"No tree-sitter support for language: {lang}")
+                return
+                
+            rows = self._ast_nodes_raw(code, ts_lang)
+            if not rows:
+                return
+                
+            with self.driver.session() as s:
+                s.execute_write(self._ensure_constraints)
+                s.execute_write(self._delete_ast_for_file, rel_path)
+                # батчим, чтобы не уткнуться в слишком большой UNWIND
+                B = 5000
+                for i in range(0, len(rows), B):
+                    chunk = rows[i:i+B]
+                    s.execute_write(self._upsert_nodes, rel_path, lang, chunk)
+                    s.execute_write(self._upsert_edges, rel_path, chunk)
+                # Строим семантические связи сразу после заливки AST
+                s.execute_write(self._build_semantic_edges, rel_path)
+        except Exception as e:
+            logger.error(f"Failed to ingest AST for {rel_path}: {e}")
+            # Не поднимаем исключение, чтобы не прерывать обработку других файлов

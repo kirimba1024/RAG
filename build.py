@@ -26,7 +26,8 @@ from utils import (
     file_hash, KNOWLEDGE_ROOT, to_posix, setup_logging,
     ES_URL, ES_INDEX, ES_MANIFEST_INDEX,
     NEO4J_BOLT_URL, NEO4J_USER, NEO4J_PASS,
-    CLAUDE_MODEL, ANTHROPIC_API_KEY, EMBED_MODEL, load_prompt
+    CLAUDE_MODEL, ANTHROPIC_API_KEY, EMBED_MODEL, load_prompt,
+    LANG_BY_EXT
 )
 
 logger = setup_logging(Path(__file__).stem)
@@ -58,28 +59,6 @@ PROP_GRAPH_INDEX = PropertyGraphIndex(
     include_text=False,
     embed_kg_nodes=False,
 )
-
-LANG_BY_EXT = {
-    ".py": "python", ".js": "javascript", ".jsx": "javascript",
-    ".ts": "typescript", ".tsx": "tsx",
-    ".java": "java", ".kt": "kotlin",
-    ".go": "go", ".rs": "rust",
-    ".c": "c", ".h": "c",
-    ".cpp": "cpp", ".cc": "cpp", ".cxx": "cpp", ".hpp": "cpp", ".hh": "cpp",
-    ".cs": "c_sharp", ".php": "php", ".rb": "ruby", ".swift": "swift",
-    ".scala": "scala", ".groovy": "groovy", ".m": "objective_c", ".mm": "objective_cpp",
-    ".sh": "bash", ".bash": "bash", ".zsh": "bash",
-    ".cmd": "cmd", ".bat": "cmd",
-    ".r": "r", ".lua": "lua",
-    ".hs": "haskell",
-    ".toml": "toml",
-    ".sass": "sass", ".scss": "scss",
-    ".jl": "julia",
-    ".ps1": "powershell",
-    ".sql": "sql", ".yaml": "yaml", ".yml": "yaml",
-    ".xml": "xml", ".html": "html", ".htm": "html",
-}
-
 
 SENTENCE_SPLITTER = SentenceSplitter(chunk_size=800, chunk_overlap=200, paragraph_separator="\n\n")
 SPLITTER_BY_LANG = {}
@@ -178,13 +157,24 @@ def to_es_action(node, doc, embedding):
 
 
 def load_doc(rel_path):
-    path = (KNOWLEDGE_ROOT / rel_path).resolve()
-    ext = path.suffix.lower()
-    extractor = FILE_EXTRACTOR.get(ext, SafePlainTextReader())
-    docs = extractor.load_data(str(path))
-    text = "\n\n".join([(d.text or "") for d in docs])
-    doc = Document(text=text, metadata=docs[0].metadata, doc_id=rel_path)
-    return doc
+    try:
+        path = (KNOWLEDGE_ROOT / rel_path).resolve()
+        if not path.exists():
+            raise FileNotFoundError(f"File not found: {rel_path}")
+        
+        ext = path.suffix.lower()
+        extractor = FILE_EXTRACTOR.get(ext, SafePlainTextReader())
+        docs = extractor.load_data(str(path))
+        
+        if not docs:
+            raise ValueError(f"No content extracted from {rel_path}")
+            
+        text = "\n\n".join([(d.text or "") for d in docs])
+        doc = Document(text=text, metadata=docs[0].metadata, doc_id=rel_path)
+        return doc
+    except Exception as e:
+        logger.error(f"Failed to load document {rel_path}: {e}")
+        raise
 
 def get_manifest_hash(rel_path):
     try:
@@ -257,18 +247,46 @@ def process_file(rel_path):
 
 def process_files():
     try:
-        result = ES.search(
-            index=ES_MANIFEST_INDEX,
-            body={"query": {"match_all": {}}, "size": 10000, "_source": ["path"]}
-        )
-        manifest_paths = {hit["_source"]["path"] for hit in result["hits"]["hits"]}
-    except Exception:
+        # Используем scroll API для больших объемов данных
         manifest_paths = set()
+        scroll_size = 1000
+        scroll_id = None
+        
+        while True:
+            if scroll_id is None:
+                result = ES.search(
+                    index=ES_MANIFEST_INDEX,
+                    body={"query": {"match_all": {}}, "size": scroll_size, "_source": ["path"]},
+                    scroll="5m"
+                )
+                scroll_id = result.get("_scroll_id")
+            else:
+                result = ES.scroll(scroll_id=scroll_id, scroll="5m")
+            
+            hits = result["hits"]["hits"]
+            if not hits:
+                break
+                
+            manifest_paths.update(hit["_source"]["path"] for hit in hits)
+            
+            if len(hits) < scroll_size:
+                break
+        
+        # Очищаем scroll
+        if scroll_id:
+            ES.clear_scroll(scroll_id=scroll_id)
+            
+    except Exception as e:
+        logger.warning(f"Failed to get manifest paths: {e}")
+        manifest_paths = set()
+    
     fs_files = {to_posix(p.relative_to(KNOWLEDGE_ROOT)) for p in KNOWLEDGE_ROOT.rglob("*") if p.is_file()}
     all_paths = list(manifest_paths | fs_files)
+    
     if not all_paths:
         logger.info("📭 No files to process")
         return
+        
     logger.info(f"📁 Processing {len(all_paths)} files")
     for rel_path in all_paths:
         try:
