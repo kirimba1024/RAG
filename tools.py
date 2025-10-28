@@ -1,7 +1,7 @@
 import subprocess
 from pathlib import Path
 from llama_index.graph_stores.neo4j import Neo4jPropertyGraphStore
-from retriever import retrieve_fusion_nodes
+from retriever import retrieve_fusion_nodes, get_code_stats, get_architecture_stats
 from utils import KNOWLEDGE_ROOT, to_posix, NEO4J_BOLT_URL, NEO4J_USER, NEO4J_PASS
 
 GRAPH_STORE = Neo4jPropertyGraphStore(url=NEO4J_BOLT_URL, username=NEO4J_USER, password=NEO4J_PASS)
@@ -71,6 +71,12 @@ def read_file_lines(path: str, start_line: int, end_line: int) -> str:
     content = "\n".join(lines[s-1:e])
     return f"📄 {path} (lines {s}-{e}):\n{content}"
 
+def code_stats(path_prefix: str = "") -> str:
+    return get_code_stats(path_prefix)
+
+def architecture_stats(path_prefix: str = "") -> str:
+    return get_architecture_stats(path_prefix)
+
 TOOLS_SCHEMA = [
     {
         "name": "main_search",
@@ -131,6 +137,28 @@ TOOLS_SCHEMA = [
                 "end_line": {"type": "integer", "description": "Конечная строка"}
             },
             "required": ["path", "start_line", "end_line"]
+        }
+    },
+    {
+        "name": "code_stats",
+        "description": "Базовая статистика по кодовой базе",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path_prefix": {"type": "string", "description": "Префикс пути для фильтрации"}
+            },
+            "required": []
+        }
+    },
+    {
+        "name": "architecture_stats",
+        "description": "Архитектурная статистика кодовой базы",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path_prefix": {"type": "string", "description": "Префикс пути для фильтрации"}
+            },
+            "required": []
         }
     }
 ]

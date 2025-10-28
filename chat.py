@@ -13,6 +13,8 @@ from tools import (
     browse_path,
     query_graph,
     read_file_lines,
+    code_stats,
+    architecture_stats,
 )
 
 logger = setup_logging(Path(__file__).stem)
@@ -27,6 +29,8 @@ TOOLS_MAP = {
     "browse_path": lambda p: browse_path(p.get("path", "")),
     "query_graph": lambda p: query_graph(p["query"], p.get("limit", 20)),
     "read_file_lines": lambda p: read_file_lines(p["path"], p["start_line"], p["end_line"]),
+    "code_stats": lambda p: code_stats(p.get("path_prefix", "")),
+    "architecture_stats": lambda p: architecture_stats(p.get("path_prefix", "")),
 }
 
 
