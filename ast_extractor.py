@@ -245,7 +245,21 @@ class ASTExtractor:
                         if p:
                             entry["in_class"] = name_of(p)
                     
-                    by_kind.setdefault(bucket, []).append(entry)
+                    # Для Python: разделяем функции и методы
+                    if lang_key == "python" and bucket == "func":
+                        # Проверяем, находится ли функция внутри класса
+                        p = n.parent
+                        while p and p.type not in ("class_definition", "function_definition"):
+                            p = p.parent
+                        if p and p.type == "class_definition":
+                            # Это метод класса
+                            entry["in_class"] = name_of(p)
+                            by_kind.setdefault("method", []).append(entry)
+                        else:
+                            # Это обычная функция
+                            by_kind.setdefault("func", []).append(entry)
+                    else:
+                        by_kind.setdefault(bucket, []).append(entry)
 
         # Форматируем результат в читаемый вид
         return self._format_structure(lang_key, by_kind)
@@ -291,15 +305,31 @@ class ASTExtractor:
             for item in by_kind["type"]:
                 result.append(f"  {item['name'] or item['type']}")
         
-        # Функции
-        for func_type in ["func", "method", "local_func"]:
-            if func_type in by_kind:
-                result.append(f"{func_type.upper()}:")
-                for item in by_kind[func_type]:
-                    line = f"  {item['name'] or item['type']}"
-                    if "in_class" in item:
-                        line += f" (IN_CLASS: {item['in_class']})"
-                    result.append(line)
+        # Функции (только те, что не в классах)
+        if "func" in by_kind:
+            result.append("FUNC:")
+            for item in by_kind["func"]:
+                # Показываем только функции, которые не являются методами
+                if "in_class" not in item:
+                    result.append(f"  {item['name'] or item['type']}")
+        
+        # Методы (функции внутри классов)
+        if "method" in by_kind:
+            result.append("METHOD:")
+            for item in by_kind["method"]:
+                line = f"  {item['name'] or item['type']}"
+                if "in_class" in item:
+                    line += f" (IN_CLASS: {item['in_class']})"
+                result.append(line)
+        
+        # Локальные функции
+        if "local_func" in by_kind:
+            result.append("LOCAL_FUNC:")
+            for item in by_kind["local_func"]:
+                line = f"  {item['name'] or item['type']}"
+                if "in_class" in item:
+                    line += f" (IN_CLASS: {item['in_class']})"
+                result.append(line)
         
         # Специальные элементы для разных языков
         if lang_key == "toml":
