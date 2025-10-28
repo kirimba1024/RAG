@@ -1,5 +1,6 @@
 import subprocess
 from pathlib import Path
+import docker
 from llama_index.graph_stores.neo4j import Neo4jPropertyGraphStore
 from retriever import retrieve_fusion_nodes, get_code_stats, get_architecture_stats
 from utils import KNOWLEDGE_ROOT, to_posix, NEO4J_BOLT_URL, NEO4J_USER, NEO4J_PASS
@@ -16,21 +17,6 @@ def main_search(question: str, path_prefix: str) -> str:
         header = f"{doc_id} {chunk_info} {line_info}"
         results.append(f"{header}:\n{node.text}")
     return "\n\n".join(results)
-
-def grep_files(pattern: str, path_prefix: str = "", case_sensitive: bool = True) -> str:
-    root = str(KNOWLEDGE_ROOT / path_prefix.lstrip("/") if path_prefix else KNOWLEDGE_ROOT)
-    cmd = ["grep", "-rn"] + (["-i"] if not case_sensitive else []) + ["-e", pattern, "--", root]
-    out = subprocess.run(cmd, capture_output=True, text=True, timeout=10).stdout.strip()
-    if not out:
-        return f"Паттерн '{pattern}' не найден"
-    results = []
-    for line in out.split("\n")[:64]:
-        p = line.split(":", 2)
-        if len(p) >= 3:
-            results.append(f"{p[0]}:{p[1]}: {p[2]}")
-        else:
-            results.append(line)
-    return "\n".join(results)
 
 def browse_path(path_str: str = "") -> str:
     p = (KNOWLEDGE_ROOT / path_str.lstrip("/")).resolve()
@@ -77,6 +63,23 @@ def code_stats(path_prefix: str = "") -> str:
 def architecture_stats(path_prefix: str = "") -> str:
     return get_architecture_stats(path_prefix)
 
+def execute_command(command: str) -> str:
+    client = docker.from_env()
+    container = client.containers.run(
+        "rag-sandbox:stable",
+        command=["sh", "-c", command],
+        mem_limit="200m",
+        cpu_period=100000,
+        cpu_quota=50000,
+        user="nobody",
+        read_only=True,
+        network_mode="none",
+        remove=True,
+        detach=False,
+        timeout=30
+    )
+    return container.decode('utf-8')
+
 TOOLS_SCHEMA = [
     {
         "name": "main_search",
@@ -88,19 +91,6 @@ TOOLS_SCHEMA = [
                 "path_prefix": {"type": "string", "description": "Префикс пути"}
             },
             "required": ["question"]
-        }
-    },
-    {
-        "name": "grep_files",
-        "description": "Поиск по регулярному выражению",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "pattern": {"type": "string", "description": "Регулярное выражение"},
-                "path_prefix": {"type": "string", "description": "Префикс пути"},
-                "case_sensitive": {"type": "boolean", "description": "Учитывать регистр"}
-            },
-            "required": ["pattern"]
         }
     },
     {
@@ -159,6 +149,17 @@ TOOLS_SCHEMA = [
                 "path_prefix": {"type": "string", "description": "Префикс пути для фильтрации"}
             },
             "required": []
+        }
+    },
+    {
+        "name": "execute_command",
+        "description": "Выполнение команд в изолированном контейнере",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "command": {"type": "string", "description": "Команда для выполнения"}
+            },
+            "required": ["command"]
         }
     }
 ]

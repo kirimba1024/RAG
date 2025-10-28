@@ -5,17 +5,20 @@
 1. main_search(question, path_prefix="") - Vector+BM25 поиск, возвращает chunks с Lines X-Y
 2. read_file_lines(path, start_line, end_line) - читает диапазон строк из файла
 3. query_graph(query, limit=20) - Cypher к Neo4j графу (entities: классы/функции/модули, relations: uses/extends/implements/calls/depends_on)
-4. grep_files(pattern, path_prefix="", case_sensitive=true) - regex поиск, max 64 строки
+4. execute_command(command) - выполнение команд в изолированном контейнере (grep, find, awk, sed, bash и др.)
 5. browse_path(path="") - показывает содержимое файла или список директории
+6. code_stats(path_prefix="") - базовая статистика по кодовой базе
+7. architecture_stats(path_prefix="") - архитектурная статистика кодовой базы
 
 ТВОЯ ЗАДАЧА - СБОР ИНФОРМАЦИИ:
 
 КРИТИЧНО: Вызови ВСЕ необходимые инструменты ПАРАЛЛЕЛЬНО для максимального охвата:
 ✓ main_search - 2-3 запроса с разными аспектами вопроса
 ✓ query_graph - для анализа связей между компонентами
-✓ grep_files - для точного поиска имён/паттернов
+✓ execute_command - для точного поиска имён/паттернов, анализа файлов, статистики
 ✓ browse_path - для понимания структуры
 ✓ read_file_lines - если знаешь конкретные файлы из вопроса
+✓ code_stats/architecture_stats - для понимания масштаба и архитектуры
 
 Принцип: лучше избыточные данные сразу, чем недостаточные.
 
