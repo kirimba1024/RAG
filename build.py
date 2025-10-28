@@ -21,7 +21,6 @@ from llama_index.readers.file import (
     PandasCSVReader,
     PandasExcelReader,
 )
-
 from utils import (
     file_hash, KNOWLEDGE_ROOT, to_posix, setup_logging,
     ES_URL, ES_INDEX, ES_MANIFEST_INDEX,
@@ -31,6 +30,9 @@ from utils import (
 )
 
 logger = setup_logging(Path(__file__).stem)
+
+# Флаг для включения/отключения LLM-графа
+ENABLE_LLM_GRAPH = True
 
 OCR_LANG = "rus+eng"
 
@@ -215,9 +217,13 @@ def delete_file(rel_path):
 def add_file(rel_path, new_hash):
     t0 = time.time()
     doc = load_doc(rel_path)
-    GRAPH_MANAGER.ingest_ast_to_neo4j(rel_path, doc.text)
+    GRAPH_MANAGER.ingest_ast(rel_path, doc.text)
     nodes = split_doc_to_nodes(doc)
-    PROP_GRAPH_INDEX.insert(doc)
+    
+    # LLM-граф только если включен
+    if ENABLE_LLM_GRAPH:
+        PROP_GRAPH_INDEX.insert(doc)
+    
     actions = []
     for node in nodes:
         embedding = Settings.embed_model.get_text_embedding(node.text)
