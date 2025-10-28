@@ -4,8 +4,6 @@ import time
 import html
 from pathlib import Path
 from anthropic import Anthropic
-from llama_index.core.prompts.chat_prompts import CHAT_REFINE_PROMPT
-from llama_index.llms.openai.utils import CHAT_MODELS
 
 from utils import CLAUDE_MODEL, ANTHROPIC_API_KEY, load_prompt, setup_logging
 from tools import (
@@ -105,22 +103,18 @@ def chat(message, history, summary):
         t0 = time.perf_counter()
         result = execute_tool(tool_use["name"], tool_use["input"])
         accumulated_text += (
-            f"<details><summary>🔧 <b>{tool_use['name']}</b></summary>\n"
-            f"<details open><summary>📥 <b>Аргументы</b></summary>\n"
-            f"<pre>{html.escape(json.dumps(tool_use['input'], ensure_ascii=False, indent=2))}</pre>\n"
-            f"</details>\n"
-            f"✓ {(time.perf_counter() - t0):.2f}s\n"
-            f"<details open><summary>📤 <b>Результат</b></summary>\n"
-            f"<pre>{html.escape(json.dumps(result, ensure_ascii=False, indent=2))}</pre>\n"
-            f"</details>\n"
-            f"</details>\n"
+            f"### 🔧 {tool_use['name']} ({(time.perf_counter() - t0):.2f}s)\n\n"
+            f"**Аргументы:**\n"
+            f"```json\n{json.dumps(tool_use['input'], ensure_ascii=False, indent=2)}\n```\n\n"
+            f"**Результат:**\n"
+            f"```\n{str(result)}\n```\n\n"
         )
         yield history + [[message, accumulated_text]], summary, ""
         tool_results.append(
             {
                 "type": "tool_result",
                 "tool_use_id": tool_use["id"],
-                "content": json.dumps(result, ensure_ascii=False),
+                "content": str(result),
             }
         )
     messages.append({"role": "assistant", "content": assistant_content})

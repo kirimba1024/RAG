@@ -83,14 +83,3 @@ def retrieve_fusion_nodes(question: str, path_prefix: str = "") -> List[BaseNode
     reranked = RERANKER.postprocess_nodes(candidates, query_bundle=qb)
     logger.info(f"⭐ Reranker отобрал {len(reranked)} чанков из {len(candidates)}")
     return [nws.node for nws in reranked]
-
-
-def nodes_to_text(nodes: List[BaseNode]) -> str:
-    results = []
-    for node in nodes:
-        doc_id = node.metadata['doc_id']
-        chunk_info = f"[chunk {node.metadata['chunk_id']}/{node.metadata['chunk_total']}]"
-        line_info = f"Lines {node.metadata['start_line']}-{node.metadata['end_line']}"
-        header = f"{doc_id} {chunk_info} {line_info}"
-        results.append(f"{header}:\n{node.text}")
-    return "\n\n".join(results)
