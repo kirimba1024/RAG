@@ -95,14 +95,20 @@ class ASTExtractor:
             return self._extract_python_like(code)
         elif language in ["javascript", "typescript"]:
             return self._extract_js_like(code)
-        elif language in ["cpp", "csharp"]:
+        elif language in ["cpp"]:
             return self._extract_cpp_like(code)
+        elif language in ["csharp"]:
+            return self._extract_csharp_like(code)
         elif language in ["go", "rust"]:
             return self._extract_go_rust_like(code)
         elif language in ["php"]:
             return self._extract_php_like(code)
         elif language in ["ruby"]:
             return self._extract_ruby_like(code)
+        elif language in ["swift"]:
+            return self._extract_swift_like(code)
+        elif language in ["dart"]:
+            return self._extract_dart_like(code)
         elif language in ["r"]:
             return self._extract_r_like(code)
         elif language in ["lua"]:
@@ -528,8 +534,14 @@ class ASTExtractor:
             if line.startswith(('use ', 'require ', 'include ', 'require_once ', 'include_once ')):
                 imports.append(line)
             
-            # Классы
-            elif 'class ' in line and '{' in line:
+            # Namespace
+            elif line.startswith('namespace '):
+                namespace = self._extract_php_namespace(line)
+                if namespace:
+                    structure.append(f"NAMESPACE: {namespace}")
+            
+            # Классы (включая внутри namespace)
+            elif 'class ' in line and ('{' in line or ':' in line):
                 class_name = self._extract_php_class_name(line)
                 if class_name:
                     current_class = class_name
@@ -648,6 +660,7 @@ class ASTExtractor:
         lines = code.split('\n')
         structure = []
         imports = []
+        current_module = None
         
         for line in lines:
             line = line.strip()
@@ -658,17 +671,39 @@ class ASTExtractor:
             if line.startswith('require('):
                 imports.append(line)
             
+            # Модули (module() или таблицы как модули)
+            elif line.startswith('module(') or (line.startswith('local ') and '=' in line and '{' in line):
+                if line.startswith('module('):
+                    module_name = self._extract_lua_module_name(line)
+                else:
+                    module_name = self._extract_lua_table_name(line)
+                if module_name:
+                    current_module = module_name
+                    structure.append(f"MODULE: {module_name}")
+            
             # Функции
             elif line.startswith('function '):
                 func_name = self._extract_lua_function_name(line)
                 if func_name:
                     structure.append(f"FUNCTION: {func_name}")
+                    if current_module:
+                        structure.append(f"  IN_MODULE: {current_module}")
             
             # Локальные функции
             elif 'local function ' in line:
                 func_name = self._extract_lua_local_function_name(line)
                 if func_name:
                     structure.append(f"LOCAL_FUNCTION: {func_name}")
+                    if current_module:
+                        structure.append(f"  IN_MODULE: {current_module}")
+            
+            # Таблицы
+            elif line.startswith('local ') and '=' in line and '{' in line:
+                table_name = self._extract_lua_table_name(line)
+                if table_name:
+                    structure.append(f"TABLE: {table_name}")
+                    if current_module:
+                        structure.append(f"  IN_MODULE: {current_module}")
         
         if imports:
             structure.insert(0, "IMPORTS:")
@@ -759,6 +794,11 @@ class ASTExtractor:
         match = re.search(r'function\s+(\w+)', line)
         return match.group(1) if match else None
     
+    def _extract_php_namespace(self, line: str) -> Optional[str]:
+        import re
+        match = re.search(r'namespace\s+([^;]+)', line)
+        return match.group(1).strip() if match else None
+    
     def _extract_ruby_class_name(self, line: str) -> Optional[str]:
         import re
         match = re.search(r'class\s+(\w+)', line)
@@ -797,6 +837,16 @@ class ASTExtractor:
     def _extract_lua_local_function_name(self, line: str) -> Optional[str]:
         import re
         match = re.search(r'local\s+function\s+(\w+)', line)
+        return match.group(1) if match else None
+    
+    def _extract_lua_module_name(self, line: str) -> Optional[str]:
+        import re
+        match = re.search(r'module\s*\(\s*["\'](\w+)["\']', line)
+        return match.group(1) if match else None
+    
+    def _extract_lua_table_name(self, line: str) -> Optional[str]:
+        import re
+        match = re.search(r'local\s+(\w+)\s*=', line)
         return match.group(1) if match else None
     
     def _extract_shell_function_name(self, line: str) -> Optional[str]:
@@ -900,16 +950,21 @@ class ASTExtractor:
             if line.startswith('@import ') or line.startswith('@use '):
                 imports.append(line)
             
-            # Селекторы
-            elif line.startswith('.') or line.startswith('#') or line.startswith('@'):
+            # Селекторы (SCSS и SASS)
+            elif (line.startswith('.') or line.startswith('#') or line.startswith('@') or 
+                  line.startswith('&') or line.startswith('*') or 
+                  (not line.startswith('@') and ':' in line and not line.startswith(' '))):
                 selector = self._extract_sass_selector(line)
                 if selector:
                     current_selector = selector
                     structure.append(f"SELECTOR: {selector}")
             
-            # Миксины
-            elif line.startswith('@mixin '):
-                mixin_name = self._extract_sass_mixin_name(line)
+            # Миксины (SCSS @mixin или SASS =)
+            elif line.startswith('@mixin ') or line.startswith('='):
+                if line.startswith('@mixin '):
+                    mixin_name = self._extract_sass_mixin_name(line)
+                else:
+                    mixin_name = self._extract_sass_sass_mixin_name(line)
                 if mixin_name:
                     structure.append(f"MIXIN: {mixin_name}")
             
@@ -918,6 +973,18 @@ class ASTExtractor:
                 func_name = self._extract_sass_function_name(line)
                 if func_name:
                     structure.append(f"FUNCTION: {func_name}")
+            
+            # Переменные
+            elif line.startswith('$'):
+                var_name = self._extract_sass_variable_name(line)
+                if var_name:
+                    structure.append(f"VARIABLE: {var_name}")
+            
+            # Вложенные селекторы (SASS)
+            elif line.startswith('  ') and (line.strip().startswith('.') or line.strip().startswith('#') or line.strip().startswith('&')):
+                selector = self._extract_sass_selector(line.strip())
+                if selector:
+                    structure.append(f"  NESTED_SELECTOR: {selector}")
         
         if imports:
             structure.insert(0, "IMPORTS:")
@@ -1016,6 +1083,185 @@ class ASTExtractor:
         
         return '\n'.join(structure) if structure else ""
     
+    def _extract_csharp_like(self, code: str) -> str:
+        """Извлечение для C#"""
+        lines = code.split('\n')
+        structure = []
+        imports = []
+        current_class = None
+        
+        for line in lines:
+            line = line.strip()
+            if not line or line.startswith('//') or line.startswith('/*'):
+                continue
+            
+            # Импорты
+            if line.startswith('using '):
+                imports.append(line)
+            
+            # Namespace
+            elif line.startswith('namespace '):
+                namespace = self._extract_csharp_namespace(line)
+                if namespace:
+                    structure.append(f"NAMESPACE: {namespace}")
+            
+            # Классы (включая внутри namespace)
+            elif 'class ' in line:
+                class_name = self._extract_csharp_class_name(line)
+                if class_name:
+                    current_class = class_name
+                    structure.append(f"CLASS: {class_name}")
+                    # Наследование
+                    inheritance = self._extract_csharp_inheritance(line)
+                    if inheritance:
+                        structure.append(f"  INHERITS: {inheritance}")
+            
+            # Интерфейсы (включая внутри namespace)
+            elif 'interface ' in line:
+                interface_name = self._extract_csharp_interface_name(line)
+                if interface_name:
+                    structure.append(f"INTERFACE: {interface_name}")
+            
+            
+            # Функции/методы
+            elif ('(' in line and ')' in line and '{' in line) and not ('class ' in line or 'interface ' in line or 'namespace ' in line):
+                func_name = self._extract_csharp_function_name(line)
+                if func_name:
+                    structure.append(f"FUNCTION: {func_name}")
+                    if current_class:
+                        structure.append(f"  IN_CLASS: {current_class}")
+            
+            # Свойства
+            elif ('get;' in line or 'set;' in line) and '{' in line:
+                prop_name = self._extract_csharp_property_name(line)
+                if prop_name:
+                    structure.append(f"PROPERTY: {prop_name}")
+                    if current_class:
+                        structure.append(f"  IN_CLASS: {current_class}")
+        
+        if imports:
+            structure.insert(0, "USING:")
+            for imp in imports[:10]:
+                structure.append(f"  {imp}")
+        
+        return '\n'.join(structure) if structure else ""
+    
+    def _extract_swift_like(self, code: str) -> str:
+        """Извлечение для Swift"""
+        lines = code.split('\n')
+        structure = []
+        imports = []
+        current_class = None
+        
+        for line in lines:
+            line = line.strip()
+            if not line or line.startswith('//'):
+                continue
+            
+            # Импорты
+            if line.startswith('import '):
+                imports.append(line)
+            
+            # Классы
+            elif 'class ' in line and '{' in line:
+                class_name = self._extract_swift_class_name(line)
+                if class_name:
+                    current_class = class_name
+                    structure.append(f"CLASS: {class_name}")
+                    # Наследование
+                    inheritance = self._extract_swift_inheritance(line)
+                    if inheritance:
+                        structure.append(f"  INHERITS: {inheritance}")
+            
+            # Структуры
+            elif 'struct ' in line and '{' in line:
+                struct_name = self._extract_swift_struct_name(line)
+                if struct_name:
+                    structure.append(f"STRUCT: {struct_name}")
+            
+            # Протоколы
+            elif 'protocol ' in line and '{' in line:
+                protocol_name = self._extract_swift_protocol_name(line)
+                if protocol_name:
+                    structure.append(f"PROTOCOL: {protocol_name}")
+            
+            # Функции
+            elif 'func ' in line and '(' in line:
+                func_name = self._extract_swift_function_name(line)
+                if func_name:
+                    structure.append(f"FUNCTION: {func_name}")
+                    if current_class:
+                        structure.append(f"  IN_CLASS: {current_class}")
+            
+            # Свойства
+            elif ('var ' in line or 'let ' in line) and ':' in line:
+                prop_name = self._extract_swift_property_name(line)
+                if prop_name:
+                    structure.append(f"PROPERTY: {prop_name}")
+                    if current_class:
+                        structure.append(f"  IN_CLASS: {current_class}")
+        
+        if imports:
+            structure.insert(0, "IMPORTS:")
+            for imp in imports[:10]:
+                structure.append(f"  {imp}")
+        
+        return '\n'.join(structure) if structure else ""
+    
+    def _extract_dart_like(self, code: str) -> str:
+        """Извлечение для Dart"""
+        lines = code.split('\n')
+        structure = []
+        imports = []
+        current_class = None
+        
+        for line in lines:
+            line = line.strip()
+            if not line or line.startswith('//'):
+                continue
+            
+            # Импорты
+            if line.startswith('import '):
+                imports.append(line)
+            
+            # Классы
+            elif 'class ' in line and '{' in line:
+                class_name = self._extract_dart_class_name(line)
+                if class_name:
+                    current_class = class_name
+                    structure.append(f"CLASS: {class_name}")
+                    # Наследование
+                    inheritance = self._extract_dart_inheritance(line)
+                    if inheritance:
+                        structure.append(f"  INHERITS: {inheritance}")
+            
+            # Миксины
+            elif 'mixin ' in line and '{' in line:
+                mixin_name = self._extract_dart_mixin_name(line)
+                if mixin_name:
+                    structure.append(f"MIXIN: {mixin_name}")
+            
+            # Расширения
+            elif 'extension ' in line and '{' in line:
+                extension_name = self._extract_dart_extension_name(line)
+                if extension_name:
+                    structure.append(f"EXTENSION: {extension_name}")
+            
+            # Функции
+            elif ('(' in line and ')' in line and '{' in line) and not (line.startswith('class ') or line.startswith('mixin ') or line.startswith('extension ')):
+                func_name = self._extract_dart_function_name(line)
+                if func_name:
+                    structure.append(f"FUNCTION: {func_name}")
+                    if current_class:
+                        structure.append(f"  IN_CLASS: {current_class}")
+        
+        if imports:
+            structure.insert(0, "IMPORTS:")
+            for imp in imports[:10]:
+                structure.append(f"  {imp}")
+        
+        return '\n'.join(structure) if structure else ""
+    
     # Вспомогательные методы для новых языков
     def _extract_haskell_module_name(self, line: str) -> Optional[str]:
         import re
@@ -1052,6 +1298,16 @@ class ASTExtractor:
         match = re.search(r'@function\s+(\w+)', line)
         return match.group(1) if match else None
     
+    def _extract_sass_variable_name(self, line: str) -> Optional[str]:
+        import re
+        match = re.search(r'\$(\w+)', line)
+        return match.group(1) if match else None
+    
+    def _extract_sass_sass_mixin_name(self, line: str) -> Optional[str]:
+        import re
+        match = re.search(r'=(\w+)', line)
+        return match.group(1) if match else None
+    
     def _extract_julia_module_name(self, line: str) -> Optional[str]:
         import re
         match = re.search(r'module\s+(\w+)', line)
@@ -1085,4 +1341,92 @@ class ASTExtractor:
     def _extract_powershell_class_name(self, line: str) -> Optional[str]:
         import re
         match = re.search(r'class\s+(\w+)', line)
+        return match.group(1) if match else None
+    
+    # Вспомогательные методы для C#
+    def _extract_csharp_namespace(self, line: str) -> Optional[str]:
+        import re
+        match = re.search(r'namespace\s+([^{]+)', line)
+        return match.group(1).strip() if match else None
+    
+    def _extract_csharp_class_name(self, line: str) -> Optional[str]:
+        import re
+        match = re.search(r'class\s+(\w+)', line)
+        return match.group(1) if match else None
+    
+    def _extract_csharp_inheritance(self, line: str) -> Optional[str]:
+        import re
+        match = re.search(r':\s*(\w+)', line)
+        return match.group(1) if match else None
+    
+    def _extract_csharp_interface_name(self, line: str) -> Optional[str]:
+        import re
+        match = re.search(r'interface\s+(\w+)', line)
+        return match.group(1) if match else None
+    
+    def _extract_csharp_function_name(self, line: str) -> Optional[str]:
+        import re
+        match = re.search(r'(\w+)\s*\(', line)
+        return match.group(1) if match else None
+    
+    def _extract_csharp_property_name(self, line: str) -> Optional[str]:
+        import re
+        match = re.search(r'(\w+)\s*\{', line)
+        return match.group(1) if match else None
+    
+    # Вспомогательные методы для Swift
+    def _extract_swift_class_name(self, line: str) -> Optional[str]:
+        import re
+        match = re.search(r'class\s+(\w+)', line)
+        return match.group(1) if match else None
+    
+    def _extract_swift_inheritance(self, line: str) -> Optional[str]:
+        import re
+        match = re.search(r':\s*(\w+)', line)
+        return match.group(1) if match else None
+    
+    def _extract_swift_struct_name(self, line: str) -> Optional[str]:
+        import re
+        match = re.search(r'struct\s+(\w+)', line)
+        return match.group(1) if match else None
+    
+    def _extract_swift_protocol_name(self, line: str) -> Optional[str]:
+        import re
+        match = re.search(r'protocol\s+(\w+)', line)
+        return match.group(1) if match else None
+    
+    def _extract_swift_function_name(self, line: str) -> Optional[str]:
+        import re
+        match = re.search(r'func\s+(\w+)', line)
+        return match.group(1) if match else None
+    
+    def _extract_swift_property_name(self, line: str) -> Optional[str]:
+        import re
+        match = re.search(r'(?:var|let)\s+(\w+)', line)
+        return match.group(1) if match else None
+    
+    # Вспомогательные методы для Dart
+    def _extract_dart_class_name(self, line: str) -> Optional[str]:
+        import re
+        match = re.search(r'class\s+(\w+)', line)
+        return match.group(1) if match else None
+    
+    def _extract_dart_inheritance(self, line: str) -> Optional[str]:
+        import re
+        match = re.search(r'extends\s+(\w+)', line)
+        return match.group(1) if match else None
+    
+    def _extract_dart_mixin_name(self, line: str) -> Optional[str]:
+        import re
+        match = re.search(r'mixin\s+(\w+)', line)
+        return match.group(1) if match else None
+    
+    def _extract_dart_extension_name(self, line: str) -> Optional[str]:
+        import re
+        match = re.search(r'extension\s+(\w+)', line)
+        return match.group(1) if match else None
+    
+    def _extract_dart_function_name(self, line: str) -> Optional[str]:
+        import re
+        match = re.search(r'(?:(?:static|final|const|void|dynamic|\w+)\s+)?(\w+)\s*\(', line)
         return match.group(1) if match else None

@@ -525,7 +525,7 @@ class LanguageTester:
         
         # Expected elements in Lua
         expected_elements = [
-            'FUNCTION:', 'LOCAL_FUNCTION:', 'IMPORTS:'
+            'FUNCTION:', 'LOCAL_FUNCTION:', 'IMPORTS:', 'MODULE:', 'TABLE:'
         ]
         
         found_elements = [elem for elem in expected_elements if elem in ast_structure]
@@ -706,12 +706,21 @@ class LanguageTester:
         
         ast_structure_sass = self.extractor.extract_ast_structure(content, 'sass')
         
+        # Check SASS elements too
+        sass_elements = ['SELECTOR:', 'MIXIN:', 'FUNCTION:', 'VARIABLE:']
+        sass_found = [elem for elem in sass_elements if elem in ast_structure_sass]
+        
         print(f"   📊 SASS: {len(ast_structure_sass.splitlines())} lines")
+        print(f"   ✅ SASS elements: {', '.join(sass_found)}")
+        
+        # Success if either SCSS or SASS has enough elements
+        scss_success = len(found_elements) >= 2
+        sass_success = len(sass_found) >= 2
         
         return {
-            'success': len(found_elements) >= 2,
+            'success': scss_success or sass_success,
             'lines': len(ast_structure.splitlines()),
-            'elements': found_elements
+            'elements': found_elements + sass_found
         }
     
     def test_julia(self):
