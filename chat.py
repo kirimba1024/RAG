@@ -9,9 +9,7 @@ from utils import CLAUDE_MODEL, ANTHROPIC_API_KEY, load_prompt, setup_logging
 from tools import (
     TOOLS_SCHEMA,
     main_search,
-    browse_path,
     query_graph,
-    read_file_lines,
     code_stats,
     architecture_stats,
     execute_command,
@@ -25,9 +23,7 @@ CHAT_ANSWER = load_prompt("prompts/chat_system_answer.txt")
 CACHE_BLOCK = {"cache_control": {"type": "ephemeral"}}
 TOOLS_MAP = {
     "main_search": lambda p: main_search(p["question"], p.get("path_prefix", "")),
-    "browse_path": lambda p: browse_path(p.get("path", "")),
     "query_graph": lambda p: query_graph(p["query"], p.get("limit", 20)),
-    "read_file_lines": lambda p: read_file_lines(p["path"], p["start_line"], p["end_line"]),
     "code_stats": lambda p: code_stats(p.get("path_prefix", "")),
     "architecture_stats": lambda p: architecture_stats(p.get("path_prefix", "")),
     "execute_command": lambda p: execute_command(p["command"]),
