@@ -1,6 +1,0 @@
-class UserService
-func createUserService()
-method UserService.constructor()
-method UserService.createUser()
-method UserService.getUser()
-method UserService.getAllUsers()

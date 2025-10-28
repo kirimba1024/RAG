@@ -1,0 +1,4 @@
+command @echo
+command REM
+command setlocal
+command set

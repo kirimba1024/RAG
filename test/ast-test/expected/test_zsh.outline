@@ -1,8 +1,0 @@
-func create_user()
-func get_user()
-func list_users()
-func get_user_count()
-func search_users()
-func get_users_older_than()
-func export_users()
-func main()

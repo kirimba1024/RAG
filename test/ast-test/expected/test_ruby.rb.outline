@@ -1,0 +1,12 @@
+module RAG
+module UserService
+class User
+class UserService
+method initialize
+method to_s
+method valid?
+method create_user
+method get_user
+keyword_parameter name
+keyword_parameter age
+keyword_parameter email

@@ -1,0 +1,17 @@
+func NewUserService()
+func main()
+method CreateUser()
+method GetUser()
+type_spec User
+type_spec UserService
+field ID
+field Name
+field Age
+field Email
+field CreatedAt
+qualified_type Time
+parameter dbURL
+parameter s
+parameter name
+parameter age
+parameter email

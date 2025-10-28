@@ -1,8 +1,0 @@
-import Foundation
-class User
-class UserService
-method UserService.createUser()
-method UserService.getUser()
-method UserService.getAllUsers()
-method UserService.userCount()
-method UserService.usersOlderThan()

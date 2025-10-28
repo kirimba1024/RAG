@@ -1,9 +1,0 @@
-import …
-class User
-class UserService
-func getUsersOlderThan()
-method User.isValid()
-method UserService.createUser()
-method UserService.getUser()
-method UserService.getAllUsers()
-method UserService.getUserCount()

@@ -1,0 +1,16 @@
+object_reference users
+object_reference uuid_generate_v4
+object_reference projects
+object_reference documents
+object_reference chunks
+column_definition id
+column_definition username
+column_definition email
+column_definition password_hash
+column_definition first_name
+table_option DEFAULT
+field NEW
+field id
+field name
+field language
+field created_at

@@ -34,11 +34,14 @@ SUPPORTED_LANGUAGES: Dict[str, str] = {
     "cmd": "bash",   # нет отдельной грамматики cmd.exe — опциональный маппинг
     "bat": "bash",   # как и выше
     "hs": "haskell",
+    "haskell": "haskell",
     "toml": "toml",
     "sass": "sass",
     "scss": "scss",
     "jl": "julia",
+    "julia": "julia",
     "ps1": "powershell",
+    "powershell": "powershell",
     "sql": "sql",
     "yaml": "yaml",
     "yml": "yaml",
@@ -136,91 +139,82 @@ class ASTExtractor:
                 continue
         return ""
 
-    def outline_short(self, code: str, language: str, limit: int = 120) -> str:
+    def list_entity_names_grouped(self, code: str, language: str, limit_per_type: int = 200) -> str:
         """
-        Короткий универсальный outline: import/class/interface/struct/enum/func + методы классов.
-        Без regex. Если язык не найден — пробует любой доступный парсер.
+        Группирует имена сущностей по точному node.type из Tree-sitter.
+        Имя берём только из полей 'name' или 'identifier' самого узла (никаких глубоких сканов).
+        Возвращает JSON: {"class_declaration":[...], "method_declaration":[...], ...}
         """
         if not code.strip():
-            return ""
+            return json.dumps({})
 
         key = self._get_language_key(language) or ""
         parser = self.parsers.get(key) or (next(iter(self.parsers.values()), None))
         if not parser:
-            return ""
+            return json.dumps({})
 
-        tree = parser.parse(code.encode("utf8"))
-        root = tree.root_node
         buf = code.encode("utf8")
+        root = parser.parse(buf).root_node
+        def tx(n): return buf[n.start_byte:n.end_byte].decode("utf8", "ignore")
 
-        def text(n):
-            return buf[n.start_byte:n.end_byte].decode("utf8", "ignore")
+        def own_name(n):
+            # только поля текущего узла — никакой «унификации»
+            c = n.child_by_field_name("name") or n.child_by_field_name("identifier")
+            return tx(c) if c else None
 
-        def name(n):
-            for fld in ("name", "identifier"):
-                c = n.child_by_field_name(fld)
-                if c:
-                    return text(c)
-            for ch in n.children:
-                if "identifier" in ch.type or ch.type.endswith("_identifier"):
-                    return text(ch)
-            if n.type in ("identifier", "type_identifier"):
-                return text(n)
-            return None
+        groups: dict[str, list] = {}
+        seen: dict[str, set] = {}
+        stack = [root]
+        while stack:
+            n = stack.pop()
+            nm = own_name(n)
+            if nm:
+                t = n.type
+                if t not in groups:
+                    groups[t], seen[t] = [], set()
+                if nm not in seen[t] and len(groups[t]) < limit_per_type:
+                    groups[t].append(nm)
+                    seen[t].add(nm)
+            # обычный DFS
+            stack.extend(reversed(n.children))
 
+        return json.dumps(groups, ensure_ascii=False, separators=(",",":"))
+
+    def outline_short(self, code: str, language: str, limit: int = 120) -> str:
+        """
+        Короткий outline через list_entity_names_grouped.
+        """
+        groups_json = self.list_entity_names_grouped(code, language, limit)
+        groups = json.loads(groups_json)
+        
         out = []
-
-        # 1) верхний уровень
-        for n in root.children:
-            t, nm = n.type, name(n)
-            if "import" in t or t in ("using_directive", "use_declaration", "namespace_use_declaration"):
-                out.append(f"import {nm or '…'}")
-            elif "class" in t and nm:
-                out.append(f"class {nm}")
-            elif "interface" in t and nm:
-                out.append(f"interface {nm}")
-            elif "struct" in t and nm:
-                out.append(f"struct {nm}")
-            elif "enum" in t and nm:
-                out.append(f"enum {nm}")
-            elif "function" in t and nm:
-                out.append(f"func {nm}()")
-
-        # 2) методы внутри классов (короткий глубокий обход)
-        def collect_methods(cls):
-            cname = name(cls) or "<?>"
-            stack = [cls]
-            while stack:
-                cur = stack.pop()
-                for ch in cur.children:
-                    tt, nm2 = ch.type, name(ch)
-                    if nm2 and ("method" in tt or "function" in tt):
-                        out.append(f"method {cname}.{nm2}()")
-                    stack.append(ch)
-
-        for n in root.children:
-            if "class" in n.type:
-                collect_methods(n)
-
-        # dedupe + лимит
-        seen, uniq = set(), []
-        for ln in out:
-            if ln not in seen:
-                uniq.append(ln); seen.add(ln)
-            if len(uniq) >= limit:
-                break
-
-        # если совсем пусто — компактный s-expression
-        if not uniq:
-            try:
-                return str(root)[:4000]
-            except Exception:
-                try:
-                    return root.sexp()[:4000]  # type: ignore[attr-defined]
-                except Exception:
-                    return ""
-
-        return "\n".join(uniq)
+        # Приоритетные типы для отображения
+        priority_types = [
+            "class_declaration", "interface_declaration", "struct_declaration",
+            "function_declaration", "method_declaration", "constructor_declaration",
+            "namespace_declaration", "module_declaration", "package_declaration",
+            "using_directive", "import_declaration", "use_declaration"
+        ]
+        
+        for t in priority_types:
+            if t in groups and groups[t]:
+                for name in groups[t][:10]:  # Ограничиваем количество
+                    if t in ["method_declaration", "constructor_declaration"]:
+                        out.append(f"method {name}()")
+                    elif t in ["function_declaration"]:
+                        out.append(f"func {name}()")
+                    elif t in ["using_directive", "import_declaration", "use_declaration"]:
+                        out.append(f"import {name}")
+                    else:
+                        out.append(f"{t.replace('_declaration', '')} {name}")
+        
+        # Добавляем остальные типы
+        for t, names in groups.items():
+            if t not in priority_types and names:
+                for name in names[:5]:  # Меньше для остальных типов
+                    out.append(f"{t.replace('_declaration', '')} {name}")
+        
+        return "\n".join(out[:limit])
 
 
 if __name__ == "__main__":

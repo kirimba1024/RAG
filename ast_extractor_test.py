@@ -73,8 +73,8 @@ def test_ast_extraction():
         # Генерируем результат
         result = extractor.outline_short(content, language)
         
-        # Путь к expected файлу
-        expected_file = expected_dir / f"{source_file.stem}.outline"
+        # Путь к expected файлу (используем полное имя файла для избежания конфликтов)
+        expected_file = expected_dir / f"{source_file.name}.outline"
         
         if expected_file.exists():
             # Сравниваем с expected

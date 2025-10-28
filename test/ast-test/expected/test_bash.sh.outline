@@ -1,0 +1,17 @@
+variable_assignment USER_COUNT
+variable_assignment name
+variable_assignment age
+variable_assignment email
+variable_assignment user_id
+function_definition create_user
+function_definition get_user
+function_definition list_users
+function_definition get_user_count
+function_definition main
+command date
+command echo
+command return
+command create_user
+command list_users
+subscript USERS
+subscript BASH_SOURCE
