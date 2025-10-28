@@ -66,7 +66,7 @@ def architecture_stats(path_prefix: str = "") -> str:
 def execute_command(command: str) -> str:
     client = docker.from_env()
     container = client.containers.run(
-        "rag-sandbox:stable",
+        image="rag-sandbox:stable",
         command=["sh", "-c", command],
         mem_limit="200m",
         cpu_period=100000,

@@ -38,4 +38,4 @@ tree-sitter>=0.25,<0.26
 
 gradio>=4.0
 
-docker>=7.0
+docker-py
