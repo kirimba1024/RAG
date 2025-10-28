@@ -7,22 +7,21 @@ echo "[sandbox] Starting RAG sandbox..."
 copy_knowledge_data() {
   echo "[sandbox] Copying knowledge data..."
   
-  # Проверяем, есть ли данные в /tmp/knowledge (если переданы через volume)
-  if [ -d "/tmp/knowledge" ] && [ "$(ls -A /tmp/knowledge)" ]; then
-    echo "[sandbox] Found knowledge data in /tmp/knowledge, copying..."
-    cp -r /tmp/knowledge/* / 2>/dev/null || true
-    echo "[sandbox] Knowledge data copied successfully"
+  # Проверяем, есть ли данные в /app (если переданы через volume)
+  if [ -d "/app" ] && [ "$(ls -A /app)" ]; then
+    echo "[sandbox] Found knowledge data in /app, ready to use"
+    echo "[sandbox] Knowledge data ready at /app"
   else
     echo "[sandbox] No external knowledge data found, using empty directory"
-    echo "# RAG Sandbox" > /README.md
-    echo "This is a sandbox environment for RAG operations." >> /README.md
+    echo "# RAG Sandbox" > /app/README.md
+    echo "This is a sandbox environment for RAG operations." >> /app/README.md
   fi
   
   # Устанавливаем права доступа
-  chmod -R 755 /
-  chown -R nobody:nobody /
+  chmod -R 755 /app
+  chown -R nobody:nobody /app
   
-  echo "[sandbox] Knowledge data ready at root"
+  echo "[sandbox] Knowledge data ready at /app"
   echo "[sandbox] Available commands: grep, find, awk, sed, bash, curl, wget, jq, tree, file, git, diffutils"
 }
 

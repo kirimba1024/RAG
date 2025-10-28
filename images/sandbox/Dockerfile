@@ -17,11 +17,14 @@ RUN apk add --no-cache \
     less \
     vim
 
-# Создаем директорию для данных
-RUN mkdir -p /tmp/knowledge
+# Создаем рабочую директорию
+RUN mkdir -p /app
 
 # Копируем скрипт инициализации
 COPY --chmod=0755 entrypoint.sh /usr/local/bin/entrypoint.sh
+
+# Устанавливаем рабочую директорию как корень
+WORKDIR /app
 
 # Запускаем скрипт инициализации
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

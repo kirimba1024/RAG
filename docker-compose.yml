@@ -47,5 +47,5 @@ services:
     build: ./images/sandbox
     image: rag-sandbox:stable
     volumes:
-      - ./knowledge:/tmp/knowledge:ro
+      - ./knowledge:/app:ro
     restart: unless-stopped
