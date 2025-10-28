@@ -5,6 +5,7 @@ from datetime import datetime, UTC
 import pytesseract
 from PIL import Image
 from elasticsearch import Elasticsearch, helpers
+from graph import GraphManager
 from llama_index.core import Document, Settings, PropertyGraphIndex
 from llama_index.core.indices.property_graph import SimpleLLMPathExtractor, ImplicitPathExtractor
 from llama_index.core.node_parser import SentenceSplitter, CodeSplitter
@@ -27,15 +28,14 @@ from utils import (
     NEO4J_BOLT_URL, NEO4J_USER, NEO4J_PASS,
     CLAUDE_MODEL, ANTHROPIC_API_KEY, EMBED_MODEL, load_prompt
 )
-from ast_extractor import ASTExtractor
 
 logger = setup_logging(Path(__file__).stem)
 
 OCR_LANG = "rus+eng"
-AST_EXTRACTOR = ASTExtractor()
 
 ES = Elasticsearch(ES_URL, request_timeout=30, max_retries=3, retry_on_timeout=True)
 GRAPH_STORE = Neo4jPropertyGraphStore(url=NEO4J_BOLT_URL, username=NEO4J_USER, password=NEO4J_PASS)
+GRAPH_MANAGER = GraphManager(NEO4J_BOLT_URL, NEO4J_USER, NEO4J_PASS)
 
 Settings.embed_model = HuggingFaceEmbedding(EMBED_MODEL, normalize=True)
 
@@ -79,6 +79,7 @@ LANG_BY_EXT = {
     ".sql": "sql", ".yaml": "yaml", ".yml": "yaml",
     ".xml": "xml", ".html": "html", ".htm": "html",
 }
+
 
 SENTENCE_SPLITTER = SentenceSplitter(chunk_size=800, chunk_overlap=200, paragraph_separator="\n\n")
 SPLITTER_BY_LANG = {}
@@ -175,18 +176,6 @@ def to_es_action(node, doc, embedding):
         "metadata": node.metadata,
     }
 
-def enrich_doc_with_ast(doc: Document):
-    """Обогащает документ AST структурой для кодовых файлов"""
-    ext = Path(doc.doc_id).suffix.lower()
-    lang = LANG_BY_EXT.get(ext)
-    
-    if lang and doc.text.strip():
-        ast_structure = AST_EXTRACTOR.extract_ast_structure(doc.text, lang)
-        if ast_structure:
-            enriched_text = f"{doc.text}\n\n# AST STRUCTURE:\n{ast_structure}"
-            return Document(text=enriched_text, metadata=doc.metadata, doc_id=doc.doc_id)
-    
-    return doc
 
 def load_doc(rel_path):
     path = (KNOWLEDGE_ROOT / rel_path).resolve()
@@ -195,7 +184,7 @@ def load_doc(rel_path):
     docs = extractor.load_data(str(path))
     text = "\n\n".join([(d.text or "") for d in docs])
     doc = Document(text=text, metadata=docs[0].metadata, doc_id=rel_path)
-    return enrich_doc_with_ast(doc)
+    return doc
 
 def get_manifest_hash(rel_path):
     try:
@@ -218,6 +207,8 @@ def upsert_manifest(rel_path, new_hash):
 def delete_file(rel_path):
     t0 = time.time()
     PROP_GRAPH_INDEX.delete_ref_doc(rel_path, delete_from_docstore=False)
+    with GRAPH_MANAGER.driver.session() as s:
+        s.execute_write(GRAPH_MANAGER._delete_ast_for_file, rel_path)
     ES.options(request_timeout=120).delete_by_query(
         index=ES_INDEX,
         body={"query": {"term": {"doc_id": rel_path}}},
@@ -234,6 +225,7 @@ def delete_file(rel_path):
 def add_file(rel_path, new_hash):
     t0 = time.time()
     doc = load_doc(rel_path)
+    GRAPH_MANAGER.ingest_ast_to_neo4j(rel_path, doc.text)
     nodes = split_doc_to_nodes(doc)
     PROP_GRAPH_INDEX.insert(doc)
     actions = []
@@ -290,6 +282,7 @@ def main():
     finally:
         ES.close()
         GRAPH_STORE.close()
+        GRAPH_MANAGER.close()
 
 if __name__ == "__main__":
     main()

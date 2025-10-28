@@ -1,5 +1,0 @@
-command @echo
-command REM
-command setlocal
-command set
-command :create_user
