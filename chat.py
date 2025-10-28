@@ -18,6 +18,7 @@ from tools import (
 logger = setup_logging(Path(__file__).stem)
 
 BASE_LLM = Anthropic(api_key=ANTHROPIC_API_KEY)
+NAVIGATION = load_prompt("prompts/chat_system_navigation.txt")
 CHAT_GATHER = load_prompt("prompts/chat_system_gather.txt")
 CHAT_ANSWER = load_prompt("prompts/chat_system_answer.txt")
 CACHE_BLOCK = {"cache_control": {"type": "ephemeral"}}
@@ -29,13 +30,8 @@ TOOLS_MAP = {
     "execute_command": lambda p: execute_command(p["command"]),
 }
 
-
-def system_block(text, summary=""):
-    blocks = [{"type": "text", "text": text, **CACHE_BLOCK}]
-    if summary:
-        blocks.append({"type": "text", "text": summary, **CACHE_BLOCK})
-    return blocks
-
+def system_block(text):
+    return [{"type": "text", "text": text, **CACHE_BLOCK}]
 
 def execute_tool(tool_name, tool_input):
     try:
@@ -50,14 +46,16 @@ def chat(message, history, summary):
     accumulated_text = ""
     messages = [{"role": "user", "content": [{"type": "text", "text": message}]}]
     logger.info(f"🔄 Этап 1: GATHER")
-    system_gather = system_block(CHAT_GATHER, summary)
-    system_answer = system_block(CHAT_ANSWER, summary)
+    system_navigation = system_block(NAVIGATION)
+    system_gather = system_block(CHAT_GATHER)
+    system_answer = system_block(CHAT_ANSWER)
+    system_summary = system_block(summary)
     assistant_content = []
     current_text = ""
     current_tool = None
     with BASE_LLM.messages.stream(
         model=CLAUDE_MODEL,
-        system=system_gather,
+        system=system_navigation + system_gather + system_summary,
         messages=messages,
         tools=TOOLS_SCHEMA,
         max_tokens=4096,
@@ -123,7 +121,7 @@ def chat(message, history, summary):
     summary = ""
     with BASE_LLM.messages.stream(
         model=CLAUDE_MODEL,
-        system=system_answer,
+        system=system_navigation + system_answer + system_summary,
         messages=messages,
         tools=TOOLS_SCHEMA,
         max_tokens=4096,
