@@ -41,7 +41,12 @@ def test_ast_extraction():
         'test_toml.toml': 'toml',
         'test_sass.scss': 'scss',
         'test_julia.jl': 'julia',
-        'test_powershell.ps1': 'powershell'
+        'test_powershell.ps1': 'powershell',
+        'test_xml.xml': 'xml',
+        'test_yaml.yaml': 'yaml',
+        'test_html.html': 'html',
+        'test_json.json': 'json',
+        'test_sql.sql': 'sql'
     }
     
     print("🧪 Testing AST extraction for all supported languages\n")
@@ -143,7 +148,12 @@ def test_language_detection():
         '.toml': 'toml',
         '.scss': 'scss',
         '.jl': 'julia',
-        '.ps1': 'powershell'
+        '.ps1': 'powershell',
+        '.xml': 'xml',
+        '.yaml': 'yaml',
+        '.html': 'html',
+        '.json': 'json',
+        '.sql': 'sql'
     }
     
     # Import SUPPORTED_LANGUAGES from ast_extractor module

@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAG Assistant - Code Analysis Tool</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.js"></script>
+</head>
+<body>
+    <div id="app">
+        <header class="header">
+            <nav class="navbar">
+                <div class="nav-brand">
+                    <h1>RAG Assistant</h1>
+                    <span class="version">v1.0.0</span>
+                </div>
+                <ul class="nav-menu">
+                    <li><a href="#home" class="nav-link">Home</a></li>
+                    <li><a href="#search" class="nav-link">Search</a></li>
+                    <li><a href="#analysis" class="nav-link">Analysis</a></li>
+                    <li><a href="#settings" class="nav-link">Settings</a></li>
+                </ul>
+            </nav>
+        </header>
+
+        <main class="main-content">
+            <section id="search" class="search-section">
+                <div class="container">
+                    <h2>Code Search & Analysis</h2>
+                    <div class="search-form">
+                        <div class="input-group">
+                            <input 
+                                type="text" 
+                                v-model="searchQuery" 
+                                placeholder="Enter your search query..."
+                                class="search-input"
+                                @keyup.enter="performSearch"
+                            >
+                            <button @click="performSearch" class="search-btn">
+                                <i class="icon-search"></i> Search
+                            </button>
+                        </div>
+                        
+                        <div class="filters">
+                            <select v-model="selectedLanguage" class="filter-select">
+                                <option value="">All Languages</option>
+                                <option value="python">Python</option>
+                                <option value="java">Java</option>
+                                <option value="javascript">JavaScript</option>
+                                <option value="typescript">TypeScript</option>
+                                <option value="go">Go</option>
+                                <option value="rust">Rust</option>
+                            </select>
+                            
+                            <select v-model="searchType" class="filter-select">
+                                <option value="semantic">Semantic Search</option>
+                                <option value="exact">Exact Match</option>
+                                <option value="regex">Regex</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="results" class="results-section" v-if="searchResults.length > 0">
+                <div class="container">
+                    <h3>Search Results ({{ searchResults.length }})</h3>
+                    <div class="results-grid">
+                        <div 
+                            v-for="result in searchResults" 
+                            :key="result.id" 
+                            class="result-card"
+                            @click="selectResult(result)"
+                        >
+                            <div class="result-header">
+                                <span class="file-type">{{ result.language }}</span>
+                                <span class="file-path">{{ result.filePath }}</span>
+                            </div>
+                            <div class="result-content">
+                                <h4>{{ result.title }}</h4>
+                                <p class="result-snippet">{{ result.snippet }}</p>
+                                <div class="result-meta">
+                                    <span class="lines">Lines {{ result.startLine }}-{{ result.endLine }}</span>
+                                    <span class="score">Score: {{ result.score.toFixed(2) }}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="analysis" class="analysis-section" v-if="selectedResult">
+                <div class="container">
+                    <h3>Code Analysis</h3>
+                    <div class="analysis-tabs">
+                        <button 
+                            v-for="tab in analysisTabs" 
+                            :key="tab.id"
+                            :class="['tab-btn', { active: activeTab === tab.id }]"
+                            @click="activeTab = tab.id"
+                        >
+                            {{ tab.label }}
+                        </button>
+                    </div>
+                    
+                    <div class="tab-content">
+                        <div v-if="activeTab === 'code'" class="code-viewer">
+                            <pre><code class="language-{{ selectedResult.language }}">{{ selectedResult.fullCode }}</code></pre>
+                        </div>
+                        
+                        <div v-if="activeTab === 'ast'" class="ast-viewer">
+                            <pre>{{ selectedResult.astStructure }}</pre>
+                        </div>
+                        
+                        <div v-if="activeTab === 'graph'" class="graph-viewer">
+                            <div id="graph-container"></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer class="footer">
+            <div class="container">
+                <p>&copy; 2024 RAG Assistant. Built with Vue.js and modern web technologies.</p>
+            </div>
+        </footer>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+        
+        createApp({
+            data() {
+                return {
+                    searchQuery: '',
+                    selectedLanguage: '',
+                    searchType: 'semantic',
+                    searchResults: [],
+                    selectedResult: null,
+                    activeTab: 'code',
+                    analysisTabs: [
+                        { id: 'code', label: 'Source Code' },
+                        { id: 'ast', label: 'AST Structure' },
+                        { id: 'graph', label: 'Knowledge Graph' }
+                    ]
+                }
+            },
+            methods: {
+                async performSearch() {
+                    if (!this.searchQuery.trim()) return;
+                    
+                    try {
+                        const response = await fetch('/api/search', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                query: this.searchQuery,
+                                language: this.selectedLanguage,
+                                type: this.searchType
+                            })
+                        });
+                        
+                        this.searchResults = await response.json();
+                    } catch (error) {
+                        console.error('Search error:', error);
+                    }
+                },
+                
+                selectResult(result) {
+                    this.selectedResult = result;
+                    this.activeTab = 'code';
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
