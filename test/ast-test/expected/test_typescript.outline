@@ -1,0 +1,8 @@
+import …
+interface User
+interface UserServiceConfig
+class UserService
+method UserService.constructor()
+method UserService.createUser()
+method UserService.getUser()
+method UserService.getAllUsers()

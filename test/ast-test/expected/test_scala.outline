@@ -1,0 +1,9 @@
+import java
+import scala
+class User
+class UserService
+method User.isValid()
+method UserService.createUser()
+method UserService.getUser()
+method UserService.getAllUsers()
+method UserService.getUserCount()
