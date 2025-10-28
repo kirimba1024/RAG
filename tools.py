@@ -38,19 +38,12 @@ def architecture_stats(path_prefix: str = "") -> str:
 
 def execute_command(command: str) -> str:
     client = docker.from_env()
-    container = client.containers.run(
-        image="rag-sandbox:stable",
-        command=["timeout", "30", "sh", "-c", command],
-        mem_limit="200m",
-        cpu_period=100000,
-        cpu_quota=50000,
-        user="nobody",
-        read_only=True,
-        network_mode="none",
-        remove=True,
-        detach=False
+    container = client.containers.get("rag-assistant-rag-sandbox-1")
+    result = container.exec_run(
+        cmd=["timeout", "30", "sh", "-c", command],
+        user="nobody"
     )
-    return container.decode('utf-8')
+    return result.output.decode('utf-8')
 
 TOOLS_SCHEMA = [
     {
