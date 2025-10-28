@@ -67,7 +67,7 @@ def execute_command(command: str) -> str:
     client = docker.from_env()
     container = client.containers.run(
         image="rag-sandbox:stable",
-        command=["sh", "-c", command],
+        command=["timeout", "30", "sh", "-c", command],
         mem_limit="200m",
         cpu_period=100000,
         cpu_quota=50000,
