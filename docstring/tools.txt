@@ -7,26 +7,28 @@ Tool Functions — инструменты для агента Claude
 
 SUMMARY:
 Набор функций-инструментов для Claude с декларацией схем (TOOLS_SCHEMA).
-Основные инструменты: main_search (ES hybrid search), query_graph (Cypher к Neo4j), grep_files, browse_path, read_file_lines.
-GRAPH_STORE создаётся локально. Neo4j для структурных запросов через Cypher, текстовый поиск через ES.
+Основные инструменты: main_search (ES hybrid search), query_graph (Cypher к Neo4j), code_stats, architecture_stats, execute_command.
+GRAPH_STORE создаётся локально. Neo4j для структурных запросов через Cypher, текстовый поиск через ES, Docker sandbox для безопасного выполнения команд.
 
 ВЫВОДЫ:
 - Локальный GRAPH_STORE создаётся в модуле из NEO4J_*.
 - main_search: гибридный поиск ES (kNN+BM25+reranking), возвращает chunks текста с метаданными Lines X-Y.
-- read_file_lines: прямое чтение диапазона строк из файла; возвращает чистый текст без построчной нумерации (номера только в заголовке) — избегаем шума для LLM, избыточность убрана.
 - query_graph: прямые Cypher запросы через GRAPH_STORE.structured_query, возвращает entities и relationships.
-- Разделение: ES для "что написано?", Neo4j для "как связано?".
-- TOOLS_SCHEMA: полная декларация для Claude с примерами Cypher.
-- execute_tool: единая точка входа, роутит вызовы инструментов.
+- code_stats/architecture_stats: делегируют к retriever.py для ES агрегаций статистики кодовой базы.
+- execute_command: выполнение команд в Docker sandbox через существующий контейнер rag-assistant-rag-sandbox-1.
+- Разделение: ES для "что написано?", Neo4j для "как связано?", Docker для "как выполнить?".
+- TOOLS_SCHEMA: полная декларация для Claude с примерами команд.
+- Все инструменты возвращают строки для передачи в tool_result Claude.
 
 АНТИПАТТЕРНЫ:
 - Пытаться делать semantic search по графу — граф хранит только структуру, не текст.
 - Возвращать из query_graph необработанные объекты — конвертим в строки через str().
 - Не указывать limit в query_graph — можно получить тысячи результатов.
+- Создавать новый контейнер для каждой команды — используем существующий через exec_run.
 
 ЗАМЕТКИ:
-- grep_files: системный grep с timeout 10s, максимум 64 строки результата.
-- browse_path: рекурсивный просмотр файлов/директорий в knowledge/.
-- read_file_lines: возвращает строки с заголовком диапазона; Path.is_relative_to защита от traversal.
-- Все инструменты возвращают строки для передачи в tool_result Claude.
+- execute_command: использует container.exec_run() с timeout 30s, user="nobody", read-only безопасность.
+- code_stats: базовая статистика (файлы, чанки, языки, размеры) через ES агрегации.
+- architecture_stats: архитектурная статистика (слои, зависимости, сложность) через ES агрегации.
+- Docker sandbox: изолированная среда с /app как рабочая директория, knowledge/ монтируется read-only.
 

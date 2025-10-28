@@ -3,12 +3,12 @@
 @docstring/_README.txt
 
 НАЗВАНИЕ:
-Hybrid Retriever — гибридный поиск с reranking
+Hybrid Retriever — гибридный поиск с reranking и статистикой
 
 SUMMARY:
 Нативный гибридный поиск в Elasticsearch (kNN + BM25) с SBERT-reranking.
 Один запрос к ES объединяет векторный и полнотекстовый поиск; поддержка фильтрации по префиксу пути.
-ES клиент создаётся локально. Граф знаний (Neo4j) используется через tools.query_graph.
+ES клиент создаётся локально. Дополнительно: статистика кодовой базы через ES агрегации.
 
 ВЫВОДЫ:
 - Локальные объекты: ES клиент, Settings.embed_model, RERANKER создаются здесь.
@@ -20,17 +20,21 @@ ES клиент создаётся локально. Граф знаний (Neo4
 - retrieve_fusion_nodes: entry point для гибридного поиска (top_k=30 → rerank to 10).
 - metadata из ES хранится в отдельном объекте "metadata" (chunk_id, chunk_total, start_line, end_line, file_path); doc_id на верхнем уровне.
 - normal_prefix: убирает лидирующие слэши/точки.
-- Fail-fast без подстраховок: отсутствие обязательных полей (doc_id, chunk_id, chunk_total, start_line, end_line) вызывает KeyError.
+- get_code_stats: ES агрегации для базовой статистики (файлы, чанки, языки, размеры, топ файлы).
+- get_architecture_stats: ES агрегации для архитектурной статистики (слои, зависимости, сложность, дублирование).
+- Fail-fast без подстраховок: отсутствие обязательных полей вызывает KeyError.
 
 АНТИПАТТЕРНЫ:
 - Вызывать два отдельных запроса (kNN, BM25) и объединять в Python — ES делает это эффективнее.
 - Использовать num_candidates = top_k без запаса — теряется recall при фильтрации.
 - Забывать применить фильтр и к knn, и к query — часть результатов будет вне scope.
 - Передавать embedding в metadata ноды — раздувает память без пользы.
+- Обрабатывать None значения в агрегациях — проверяем через or 0.
 
 ЗАМЕТКИ:
 - DEVICE: cuda > mps > cpu (автоопределение для reranker).
 - ES multi_match: буст для ru^1.3, en^1.2 над базовым text^1.0.
 - nodes_to_text: форматирует ноды как "doc_id [chunk N/M] Lines X-Y:\ntext".
-- Neo4j граф: используется через tools.query_graph с прямыми Cypher запросами, не через retriever.
+- Статистика: компактный вывод через циклы, обработка None значений, эмодзи для читаемости.
+- Агрегации: files, chunks, avg_chunk_size, languages, top_files, largest_files, recent_files, file_extensions.
 

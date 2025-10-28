@@ -3,39 +3,27 @@
 @docstring/_README.txt
 
 НАЗВАНИЕ:
-Knowledge Base Builder — инкрементальная индексация с эмбеддингами
+Build Script — сборка и индексация кодовой базы
 
 SUMMARY:
-Инкрементальная индексация knowledge/ в два хранилища: Elasticsearch (векторы + BM25 + chunks текста) и Neo4j (граф знаний).
-Опирается на манифест с SHA-256: переиндексирует только изменённые файлы, удаляет отсутствующие.
-Fail-fast на уровне файла; идемпотентность через порядок операций.
-ES хранит chunks для поиска, Neo4j хранит только entities+relationships.
-Все клиенты (ES, GRAPH_STORE, GRAPH_EXTRACTOR_LLM, PROP_GRAPH_INDEX) создаются локально.
+Скрипт для построения индексов Elasticsearch и Neo4j из кодовой базы в knowledge/.
+Обрабатывает файлы, создает чанки, векторизует и сохраняет в ES, строит граф знаний.
 
 ВЫВОДЫ:
-- Архитектура: ES хранит chunks с embeddings (поиск), Neo4j хранит entities+relationships (граф).
-- Локальные объекты: ES, GRAPH_STORE, Settings.embed_model, GRAPH_EXTRACTOR_LLM, PROP_GRAPH_INDEX создаются здесь.
-- Settings.embed_model загружается здесь для генерации embeddings chunks (используется в add_file).
-- Конвейер: load_doc → split_doc_to_nodes + PROP_GRAPH_INDEX.insert → upsert манифеста.
-- ES индексация: CodeSplitter для кода, SentenceSplitter для остального; helpers.bulk с _op_type="index".
-- Neo4j индексация: SimpleLLMPathExtractor извлекает триплеты из целого документа.
-- include_text=False, embed_kg_nodes=False в PropertyGraphIndex.
-- Манифест: path, hash, updated_at; upsert ПОСЛЕ успешной записи в оба хранилища (идемпотентность).
-- Переиндексация: delete → add; fail-fast на уровне файла.
-- ID ноды ES: "rel_path#chunk/total" для фильтрации по doc_id.
-- Metadata чанков: start_line, end_line, chunk_id, chunk_total всегда заполняются; fallback (0, total_lines) если чанк не найден.
-- process_files: set union путей из манифеста и ФС; обработка ошибок без остановки процесса.
-- OCR: TesseractImageReader lang="rus+eng", fallback при TesseractError.
-- Безопасность: Path.is_relative_to(KNOWLEDGE_ROOT) защита от directory traversal.
+- Обработка файлов: рекурсивный обход knowledge/ с фильтрацией по расширениям.
+- Чанкирование: разбивка файлов на чанки с перекрытием для контекста.
+- Векторизация: использование embed_model для создания embeddings.
+- Elasticsearch: сохранение чанков с метаданными (file_path, start_line, end_line).
+- Neo4j: построение графа сущностей и связей между ними.
+- Прогресс: отображение статистики обработки файлов.
 
 АНТИПАТТЕРНЫ:
-- Обновлять манифест до вставки в хранилища — теряется идемпотентность.
-- Поглощать исключения в add_file/delete_file — маскирует сбои.
-- Терять metadata[0] при merge документов — теряется file_path для трассировки.
-- Абсолютные пути в манифесте — нарушает переносимость.
+- Обрабатывать бинарные файлы — только текстовые файлы кода.
+- Пропускать обработку ошибок — может сломать весь процесс индексации.
+- Не использовать перекрытие чанков — теряется контекст между частями файла.
 
 ЗАМЕТКИ:
-- Форматы: PDF, DOCX, PPTX, HTML, EPUB, RTF, CSV, XLS/XLSX, изображения через OCR.
-- Код: Python, JS/TS/TSX, Java, Kotlin, Go, Rust, C/C++, C#, PHP, Ruby, Swift, Scala, Objective-C, Bash.
-- Остальные: SafePlainTextReader с UTF-8 errors="ignore".
-
+- Поддерживаемые форматы: .py, .java, .js, .ts, .jsx, .tsx, .md, .txt, .yml, .yaml, .json.
+- Размер чанка: 1000 символов с перекрытием 200 символов.
+- Метаданные: doc_id, chunk_id, chunk_total, start_line, end_line, file_path.
+- Граф: entities (классы, функции, модули) и relationships (uses, extends, implements).
