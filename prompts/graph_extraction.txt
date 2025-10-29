@@ -5,14 +5,11 @@ RULES:
 - Use type/class names, not variable names (UserService, not service)
 - Skip uncertain relationships
 - Focus on architectural relationships (uses, extends, implements)
-- Both entities must appear in text OR AST structure
-- Use AST structure to understand code organization and relationships
-- AST provides structural information: classes, methods, imports, inheritance
+- Both entities must appear in text
 
 SCHEMAS:
 
 CODE: has_method, extends, implements, uses, calls, returns, imports, instantiates, annotated_with
-AST: inherits, overrides, calls_method, accesses_field, implements_interface, defines_class, defines_method
 DOCS: provides, requires, uses, describes, part_of, depends_on
 CONFIG: connects_to, exposes, depends_on, has_setting, runs_on
 

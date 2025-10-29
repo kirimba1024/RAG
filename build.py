@@ -5,7 +5,6 @@ from datetime import datetime, UTC
 import pytesseract
 from PIL import Image
 from elasticsearch import Elasticsearch, helpers
-from graph import GraphManager
 from llama_index.core import Document, Settings, PropertyGraphIndex
 from llama_index.core.indices.property_graph import SimpleLLMPathExtractor, ImplicitPathExtractor
 from llama_index.core.node_parser import SentenceSplitter, CodeSplitter
@@ -21,25 +20,20 @@ from llama_index.readers.file import (
     PandasCSVReader,
     PandasExcelReader,
 )
+
 from utils import (
     file_hash, KNOWLEDGE_ROOT, to_posix, setup_logging,
     ES_URL, ES_INDEX, ES_MANIFEST_INDEX,
     NEO4J_BOLT_URL, NEO4J_USER, NEO4J_PASS,
-    CLAUDE_MODEL, ANTHROPIC_API_KEY, EMBED_MODEL, load_prompt,
-    LANG_BY_EXT
+    CLAUDE_MODEL, ANTHROPIC_API_KEY, EMBED_MODEL, load_prompt, LANG_BY_EXT
 )
-from ast_semantic_splitter import create_semantic_chunks
 
 logger = setup_logging(Path(__file__).stem)
-
-# Флаг для включения/отключения LLM-графа
-ENABLE_LLM_GRAPH = True
 
 OCR_LANG = "rus+eng"
 
 ES = Elasticsearch(ES_URL, request_timeout=30, max_retries=3, retry_on_timeout=True)
 GRAPH_STORE = Neo4jPropertyGraphStore(url=NEO4J_BOLT_URL, username=NEO4J_USER, password=NEO4J_PASS)
-GRAPH_MANAGER = GraphManager(NEO4J_BOLT_URL, NEO4J_USER, NEO4J_PASS)
 
 Settings.embed_model = HuggingFaceEmbedding(EMBED_MODEL, normalize=True)
 
@@ -84,15 +78,6 @@ def get_splitter(lang):
 def split_doc_to_nodes(doc: Document):
     ext = Path(doc.doc_id).suffix.lower()
     lang = LANG_BY_EXT.get(ext)
-    
-    # Пробуем AST-aware разбиение для поддерживаемых языков
-    if lang and lang in ['python', 'javascript', 'typescript', 'java', 'go', 'rust']:
-        try:
-            return split_doc_to_ast_nodes(doc, lang)
-        except Exception as e:
-            logger.warning(f"AST splitting failed for {doc.doc_id}: {e}, falling back to CodeSplitter")
-    
-    # Fallback к обычному CodeSplitter
     splitter = get_splitter(lang)
     nodes = splitter.get_nodes_from_documents([doc])
     for i, node in enumerate(nodes):
@@ -107,38 +92,6 @@ def split_doc_to_nodes(doc: Document):
         else:
             node.metadata["start_line"] = 0
             node.metadata["end_line"] = doc.text.count('\n') + 1
-    return nodes
-
-def split_doc_to_ast_nodes(doc: Document, lang: str):
-    """Разбивает документ на узлы с использованием AST семантического разбиения"""
-    from llama_index.core.schema import TextNode
-    
-    # Создаем семантические чанки
-    semantic_chunks = create_semantic_chunks(doc.text, lang, doc.doc_id)
-    
-    nodes = []
-    for i, chunk in enumerate(semantic_chunks):
-        # Создаем TextNode из семантического чанка
-        node = TextNode(
-            text=chunk.text,
-            id_=f"{doc.doc_id}#{i+1}/{len(semantic_chunks)}",
-            metadata={
-                "chunk_id": i + 1,
-                "chunk_total": len(semantic_chunks),
-                "start_line": chunk.start_line,
-                "end_line": chunk.end_line,
-                "ast_type": chunk.node_type,
-                "ast_name": chunk.node_name,
-                "parent_type": chunk.parent_type,
-                "parent_name": chunk.parent_name,
-                "is_function": chunk.node_type in ['function_definition', 'function_declaration', 'method_definition'],
-                "is_class": chunk.node_type in ['class_definition', 'class_declaration'],
-                "is_method": chunk.node_type == 'method_definition',
-                "doc_id": doc.doc_id
-            }
-        )
-        nodes.append(node)
-    
     return nodes
 
 class TesseractImageReader(BaseReader):
@@ -199,26 +152,13 @@ def to_es_action(node, doc, embedding):
         "metadata": node.metadata,
     }
 
-
 def load_doc(rel_path):
-    try:
-        path = (KNOWLEDGE_ROOT / rel_path).resolve()
-        if not path.exists():
-            raise FileNotFoundError(f"File not found: {rel_path}")
-        
-        ext = path.suffix.lower()
-        extractor = FILE_EXTRACTOR.get(ext, SafePlainTextReader())
-        docs = extractor.load_data(str(path))
-        
-        if not docs:
-            raise ValueError(f"No content extracted from {rel_path}")
-            
-        text = "\n\n".join([(d.text or "") for d in docs])
-        doc = Document(text=text, metadata=docs[0].metadata, doc_id=rel_path)
-        return doc
-    except Exception as e:
-        logger.error(f"Failed to load document {rel_path}: {e}")
-        raise
+    path = (KNOWLEDGE_ROOT / rel_path).resolve()
+    ext = path.suffix.lower()
+    extractor = FILE_EXTRACTOR.get(ext, SafePlainTextReader())
+    docs = extractor.load_data(str(path))
+    text = "\n\n".join([(d.text or "") for d in docs])
+    return Document(text=text, metadata=docs[0].metadata, doc_id=rel_path)
 
 def get_manifest_hash(rel_path):
     try:
@@ -241,8 +181,6 @@ def upsert_manifest(rel_path, new_hash):
 def delete_file(rel_path):
     t0 = time.time()
     PROP_GRAPH_INDEX.delete_ref_doc(rel_path, delete_from_docstore=False)
-    with GRAPH_MANAGER.driver.session() as s:
-        s.execute_write(GRAPH_MANAGER._delete_ast_for_file, rel_path)
     ES.options(request_timeout=120).delete_by_query(
         index=ES_INDEX,
         body={"query": {"term": {"doc_id": rel_path}}},
@@ -259,13 +197,8 @@ def delete_file(rel_path):
 def add_file(rel_path, new_hash):
     t0 = time.time()
     doc = load_doc(rel_path)
-    GRAPH_MANAGER.ingest_ast(rel_path, doc.text)
     nodes = split_doc_to_nodes(doc)
-    
-    # LLM-граф только если включен
-    if ENABLE_LLM_GRAPH:
-        PROP_GRAPH_INDEX.insert(doc)
-    
+    PROP_GRAPH_INDEX.insert(doc)
     actions = []
     for node in nodes:
         embedding = Settings.embed_model.get_text_embedding(node.text)
@@ -295,46 +228,18 @@ def process_file(rel_path):
 
 def process_files():
     try:
-        # Используем scroll API для больших объемов данных
+        result = ES.search(
+            index=ES_MANIFEST_INDEX,
+            body={"query": {"match_all": {}}, "size": 10000, "_source": ["path"]}
+        )
+        manifest_paths = {hit["_source"]["path"] for hit in result["hits"]["hits"]}
+    except Exception:
         manifest_paths = set()
-        scroll_size = 1000
-        scroll_id = None
-        
-        while True:
-            if scroll_id is None:
-                result = ES.search(
-                    index=ES_MANIFEST_INDEX,
-                    body={"query": {"match_all": {}}, "size": scroll_size, "_source": ["path"]},
-                    scroll="5m"
-                )
-                scroll_id = result.get("_scroll_id")
-            else:
-                result = ES.scroll(scroll_id=scroll_id, scroll="5m")
-            
-            hits = result["hits"]["hits"]
-            if not hits:
-                break
-                
-            manifest_paths.update(hit["_source"]["path"] for hit in hits)
-            
-            if len(hits) < scroll_size:
-                break
-        
-        # Очищаем scroll
-        if scroll_id:
-            ES.clear_scroll(scroll_id=scroll_id)
-            
-    except Exception as e:
-        logger.warning(f"Failed to get manifest paths: {e}")
-        manifest_paths = set()
-    
     fs_files = {to_posix(p.relative_to(KNOWLEDGE_ROOT)) for p in KNOWLEDGE_ROOT.rglob("*") if p.is_file()}
     all_paths = list(manifest_paths | fs_files)
-    
     if not all_paths:
         logger.info("📭 No files to process")
         return
-        
     logger.info(f"📁 Processing {len(all_paths)} files")
     for rel_path in all_paths:
         try:
@@ -348,7 +253,6 @@ def main():
     finally:
         ES.close()
         GRAPH_STORE.close()
-        GRAPH_MANAGER.close()
 
 if __name__ == "__main__":
     main()

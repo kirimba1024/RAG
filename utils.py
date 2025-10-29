@@ -30,7 +30,6 @@ ES_URL = f"http://{ES_HOST}:{ES_PORT}"
 
 KNOWLEDGE_ROOT = Path("knowledge").resolve()
 
-# Маппинг расширений файлов на языки и tree-sitter имена
 LANG_BY_EXT = {
     ".py": "python", ".js": "javascript", ".jsx": "javascript",
     ".ts": "typescript", ".tsx": "tsx",
@@ -51,17 +50,6 @@ LANG_BY_EXT = {
     ".sql": "sql", ".yaml": "yaml", ".yml": "yaml",
     ".xml": "xml", ".html": "html", ".htm": "html",
     ".json": "json",
-}
-
-# Tree-sitter имена языков (для ASTExtractor)
-TREE_SITTER_NAMES = {
-    "python": "python", "javascript": "javascript", "typescript": "typescript",
-    "java": "java", "kotlin": "kotlin", "scala": "scala", "groovy": "groovy",
-    "cpp": "cpp", "c": "c", "csharp": "csharp", "go": "go", "rust": "rust",
-    "php": "php", "ruby": "ruby", "swift": "swift", "dart": "dart",
-    "r": "r", "lua": "lua", "bash": "bash", "haskell": "haskell",
-    "toml": "toml", "scss": "scss", "julia": "julia", "powershell": "powershell",
-    "sql": "sql", "yaml": "yaml", "xml": "xml", "html": "html", "json": "json",
 }
 
 def setup_logging(name: str) -> logging.Logger:
