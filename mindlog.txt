@@ -771,3 +771,200 @@ Merkle trees → Инкрементальные обновления
 Семантический поиск → Находит релевантные chunks
 AST навигация → Переходит к связанным узлам
 Контекстное понимание → Объединяет структуру и семантику
+
+
+
+Коротко: “идеальная” семантика для кода = готовый символный граф + готовый семантический граф + гибридный поиск. Ниже — три реально plug-and-play стека (без самопила), которые вместе дают почти «как у Cursor, а местами лучше».
+Стек A — Символьный граф кода (готовый)
+Цель: точные узлы-чанки по символам (функции/классы), call graph, refs, imports — без своих парсеров.
+Готовое решение: SCIP (Sourcegraph Code Intelligence Protocol) + индексаторы по языкам.
+Что даёт из коробки: “Go to definition / Find references / call graph” уровня IDE, на десятках языков. Вы просто берёте символы как чанки.
+GitHub
++3
+GitHub
++3
+Sourcegraph
++3
+Мини-интеграция:
+# пример: Python / Java / TS
+pipx install scip-python
+scip-python index
+scip-java index
+npx @sourcegraph/scip-typescript
+Дальше либо:
+поднимаете Sourcegraph и дергаете GraphQL (defs/refs) → получаете ребра CALLS/IMPORTS/REFERENCES, или
+просто берёте .scip-индексы как источник границ чанков/символов (символ = «идеальный чанк»).
+Почему это лучше самописного AST-чанкера: SCIP уже решает сложные кейсы типов/переопределений и даёт стабильные символы + точные диапазоны — то, что нужно для «идеальных» чанков.
+Sourcegraph
+Стек B — Семантический граф знаний (готовый)
+Цель: «понимать смысл» (фичи, сущности, связи), резюмировать подсети, отвечать на архитектурные вопросы.
+Готовое решение: Microsoft GraphRAG (CLI/библиотека). Одной командой строит knowledge graph + community summaries и даёт готовый пайплайн запросов.
+GitHub
++2
+Microsoft GitHub
++2
+Мини-интеграция (CLI):
+pip install graphrag
+graphrag init --root data
+graphrag run --root data index     # строит KG и community-резюме
+graphrag run --root data query --task "Как устроена валидация платежей?"
+GraphRAG хорошо «поднимает» смысл из доков/PR-ов/комментов и работает как верхний семантический слой над кодом.
+Microsoft GitHub
++1
+Стек C — Гибридный семантический поиск (готовый)
+Цель: быстрый recall по коду/докам ⇒ гибрид (BM25 + вектора) + HNSW.
+Готовое решение: Weaviate (hybrid search) или Elastic/OpenSearch kNN. Weaviate из коробки поддерживает гибрид и современные стратегии чанкинга (в т.ч. late/hierarchical).
+Weaviate
++3
+Weaviate
++3
+Weaviate Documentation
++3
+Мини-интеграция (Weaviate Python):
+import weaviate, weaviate.classes as wvc
+client = weaviate.connect_to_local()
+client.collections.create(
+  "Code", vectorizer_config=wvc.config.Configure.Vectorizer.none()
+)
+col = client.collections.get("Code")
+col.data.insert({"text": chunk_text, "path": path, "symbol": symbol_name})
+print(col.query.hybrid(query="retry logic", limit=10))
+Гибрид закрывает кейсы «точное слово» + «семантика», без тюнинга индекса.
+Weaviate
+Как это складывается вместе (супер-коротко)
+Чанки: не изобретайте. Берите символы из SCIP как базовые чанки (функции/классы/методы с точными byte-range). Для текстов/доков — late/hierarchical (готовые стратегии из Weaviate-гайдов).
+Weaviate
++1
+Графы:
+CodeGraph (точный): узлы File/Class/Function/Test, рёбра CALLS/IMPORTS/INHERITS/REFERENCES — от SCIP.
+GitHub
+Semantic KG (смысл): узлы Concept/Feature/API, рёбра RELATES/IMPLEMENTS/DOCS, резюме сообществ — от GraphRAG.
+Microsoft GitHub
+Мосты: Function —[:MENTIONS/IMPLEMENTS]→ Concept; File —[:DOCS]→ Concept.
+Поиск: гибрид в векторке (Weaviate/ES) → RRF-фьюжн с графовыми кандидатами → (опционально) лёгкий re-rank.
+Weaviate
+Почему это «пара строчек», а не самопил
+SCIP уже выдаёт идеальные границы чанков (символы) и точные ссылки — вы их просто используете.
+GitHub
+GraphRAG сам строит семантический KG и community-резюме — одной командой.
+GitHub
+Weaviate даёт гибрид и готовые best-practices по чанкингу, без настройки ANN вручную.
+Weaviate
++1
+Если хотите остаться в текущем стеке (LlamaIndex + Neo4j + ES)
+Можно и совсем без смены инструментов:
+PropertyGraphIndex (LlamaIndex) для семантического графа:
+from llama_index.core import PropertyGraphIndex
+pgi = PropertyGraphIndex.from_documents(docs, kg_extractors=[...])
+Это готовый модуль для извлечения сущностей/связей в property-graph.
+LlamaIndex
++2
+LlamaIndex
++2
+Гибридный поиск оставить в ES/OpenSearch (kNN + BM25), как вы уже делаете.
+Символы как чанки брать из SCIP (а не из CodeSplitter): вы просто читаете символы/диапазоны из индекса и индексируете их в ES как документы. (SCIP — стандарт де-факто, поддержка многих языков).
+GitHub
+Итоговая рекомендация
+Минимальный путь: SCIP для чанков и code-графа → GraphRAG для смыслового KG → Weaviate/ES для гибридного поиска.
+Порог входа: реально несколько команд и 10–15 строк клея.
+Качество: точные символы (как у IDE) + смысловые «сообщества» (как у глубокого обзора архитектуры) + гибридный recall.
+Если нужно, накину шаблон «склейки» (SCIP → Weaviate + мосты GraphRAG→Neo4j) прямо под ваш репо.
+
+| Задача                                               | Решение                                 | Качество | Минимализм | Почему                                                                                                                          |
+| ---------------------------------------------------- | --------------------------------------- | -------: | ---------: | ------------------------------------------------------------------------------------------------------------------------------- |
+| Границы чанков и точный граф кода                    | **SCIP indexers** (TS/JS, Java, Python) |        5 |        3.5 | Даёт «Go to def / Find refs» и call-graph уровня IDE; ставится одной командой на язык. ([GitHub][1])                            |
+| Семантический граф/саммари по документации/чат-логам | **Microsoft GraphRAG (CLI)**            |      4.5 |          4 | Одним `graphrag run index/query` строит KG и «community summaries»; легко дергать из tools. ([Microsoft GitHub][2])             |
+| Векторный/гибридный поиск                            | **Weaviate (hybrid)**                   |      4.5 |        4.5 | Готовый BM25+вектора (hybrid) «из коробки», без ручного тюнинга. ([Weaviate Documentation][3])                                  |
+| Векторный/гибридный поиск (если уже есть ES)         | **Elasticsearch kNN + BM25**            |      4.5 |        3.5 | Нужна 1 настройка `dense_vector` + kNN/HNSW и запрос kNN+BM25; зато остаётесь на существующей инфраструктуре. ([elastic.co][4]) |
+| LLM-KG внутри Python                                 | **LlamaIndex PropertyGraphIndex**       |      3.5 |          4 | Плаг-эн-плей извлечение сущностей/связей; удобный fallback/дополнение к GraphRAG. ([LlamaIndex][5])                             |
+
+[1]: https://github.com/sourcegraph/scip-typescript?utm_source=chatgpt.com "SCIP indexer for TypeScript and JavaScript"
+[2]: https://microsoft.github.io/graphrag/get_started/?utm_source=chatgpt.com "Getting Started - GraphRAG - Microsoft Open Source"
+[3]: https://docs.weaviate.io/weaviate/search/hybrid?utm_source=chatgpt.com "Hybrid search | Weaviate Documentation"
+[4]: https://www.elastic.co/docs/reference/elasticsearch/mapping-reference/dense-vector?utm_source=chatgpt.com "Dense vector field type | Reference"
+[5]: https://developers.llamaindex.ai/python/framework/module_guides/indexing/lpg_index_guide/?utm_source=chatgpt.com "Using a Property Graph Index"
+
+
+Коротко: да — всё, что я советовал, можно запускать **бесплатно** локально/он-прем. Платно обычно только облачные/enterprise-опции и токены LLM (Claude).
+
+* **SCIP indexers (чанки/граф кода)** — open source, **Apache-2.0**:
+  `scip-typescript`, `scip-java` и др. бесплатны. ([GitHub][1])
+* **Microsoft GraphRAG (семантический KG + community summaries)** — **MIT**, бесплатно. Нужны лишь кредиты на LLM/эмбеддинги, если используете внешнее API. ([GitHub][2])
+* **Weaviate (векторка/гибрид)** — open source, бесплатно при self-host; **Weaviate Cloud** — платный managed-сервис. ([Weaviate][3])
+* **Elasticsearch (BM25 + kNN)** — «**Basic**» уровень **бесплатен** (лицензия **ELv2**; платные — Platinum/Enterprise). ([elastic.co][4])
+  *(Если принципиально нужен полностью OSI-лицензируемый стек — есть Apache-2.0 **OpenSearch**.)* ([OpenSearch][5])
+* **Neo4j Community Edition** — бесплатна, **GPLv3** (для продвинутых возможностей — Enterprise платная). ([Graph Database & Analytics][6])
+* **LlamaIndex (в т.ч. PropertyGraphIndex)** — **MIT**, бесплатно. ([GitHub][7])
+* **Claude/API** — сами модели **платные по токенам** (например, актуальные тарифы на странице Pricing). ([Claude][8])
+* *(Опционально)* **Sourcegraph сервер/GraphQL**: indexers бесплатны, но продвинутые возможности Code Search/Cloud — по тарифам; есть self-serve/enterprise планы. ([Sourcegraph][9])
+
+**Итог для “минимализма” без скрытых затрат:**
+SCIP (чанки/граф) → ваш Elasticsearch Basic (гибрид) → GraphRAG (KG/саммари). Всё это можно держать self-host бесплатно; оплачиваются только токены Claude (и ваше железо).
+
+[1]: https://github.com/sourcegraph/scip-typescript "GitHub - sourcegraph/scip-typescript: SCIP indexer for TypeScript and JavaScript"
+[2]: https://github.com/microsoft/graphrag "GitHub - microsoft/graphrag: A modular graph-based Retrieval-Augmented Generation (RAG) system"
+[3]: https://weaviate.io/platform "Open Source Vector Database | Weaviate"
+[4]: https://www.elastic.co/subscriptions "Subscriptions | Elastic Stack Products & Support | Elastic"
+[5]: https://opensearch.org/?utm_source=chatgpt.com "OpenSearch: Home"
+[6]: https://neo4j.com/open-source-project/?utm_source=chatgpt.com "Open Source Graph Database Project"
+[7]: https://github.com/run-llama/llama_index "GitHub - run-llama/llama_index: LlamaIndex is the leading framework for building LLM-powered agents over your data."
+[8]: https://www.claude.com/pricing?utm_source=chatgpt.com "Pricing"
+[9]: https://sourcegraph.com/terms/cloud?utm_source=chatgpt.com "Sourcegraph | Terms of Service"
+
+
+
+SCIP / Sourcegraph — это не «или/или». SCIP — формат/индексаторы. Sourcegraph — сервер/API, который читает эти индексы и даёт GraphQL (defs/refs/calls). Их логично ставить вместе: Sourcegraph использует SCIP.
+GraphRAG CLI — да, это тот самый Microsoft GraphRAG (официальный CLI/пакет).
+Weaviate vs Elasticsearch — если у тебя уже есть Elastic (BM25 + embeddings + kNN/HNSW) и он тебя устраивает по скорости/функциям, Weaviate не обязателен. Weaviate — альтернатива, не дополнение.
+Теперь — как всё встроить без поломок и что это даст.
+Как встроить поверх уже имеющегося (ES + Neo4j + LlamaIndex PGI)
+1) Добавить SCIP/Sourcegraph как источник «идеальных чанков и графа кода»
+Ничего не выкидываем. Добавляем новый тул уровня чтения:
+sg.search (поиск по коду/фильтры),
+sg.codeintel (definitions/references/callers/callees),
+sg.blob (фрагмент файла).
+Как это сочетается с ES:
+Делай fusion: кандидаты из ES (BM25+kNN) + кандидаты из Sourcegraph (по символам/структурному поиску) → RRF-фьюзия → при ответе цитаты тянем через sg.blob.
+То есть ES остаётся как есть; Sourcegraph даёт структурную точность (символы и связи), которую ES сам по себе не даёт.
+Как это сочетается с Neo4j:
+Твой текущий KG (LlamaIndex PGI) остаётся. Отдельно можно стримить связи из Sourcegraph (defs/refs/calls/imports) в Neo4j как «sourcegraph слой» (другие метки/типы рёбер). Ничего не конфликтует: разные “слои” графа.
+Что даст: мгновенная IDE-точность (границы символов, кто-кого вызывает), устойчивые привязки к строкам/байтам, меньше «галлюцинаций» вокруг кода.
+2) Добавить GraphRAG CLI как семантический слой по документам
+Тоже не ломает старое: это отдельные CLI-тулы:
+graphrag.index (периодически),
+graphrag.query (вопросы уровня «как устроено Х?» с источниками).
+Как это сочетается с твоим Neo4j:
+Ничего не обязаны объединять. Но при желании можно:
+складывать экспорт GraphRAG (communities/summaries) в Neo4j как “semantic layer”,
+связать узлы документов с кодовыми символами (по совпадениям имён/путей/ярлыков).
+Как это сочетается с ES:
+GraphRAG остаётся отдельным механизмом «ответов по смыслу». ES по-прежнему даёт поиск и сниппеты. Claude может сначала спросить GraphRAG, потом подтвердить детали через ES/Sourcegraph.
+Что даст: архитектурные/бизнесовые ответы + качественные «обзоры подсистем», которых нет ни у ES, ни у чистого KG из LlamaIndex.
+3) Нужен ли Weaviate, если уже есть ES?
+Не обязателен. Weaviate удобен, если:
+стартуешь «с нуля» без ES,
+хочешь супер-простой hybrid из коробки и schema-first коллекции,
+нужна встроенная агрегация/рекомендации в самой векторке.
+У тебя уже: ES с BM25 + embeddings + kNN/HNSW → это закрывает гибридный поиск.
+Оставь ES. Добавление Weaviate — это плюс ещё один сервис, а качественный выигрыш будет не ключевым при наличии нормальных эмбеддингов и RRF.
+Рекомендованный минимальный план (без ломки)
+Поднять Sourcegraph с авто-индексацией SCIP (по вашим языкам).
+Добавить 3 read-only тула (sg.search, sg.codeintel, sg.blob) для Claude.
+Результат: точные символы, defs/refs/calls, надёжные сниппеты.
+Подключить GraphRAG CLI к папке с доками/ADR/конфлюенсом/чат-логами.
+Добавить 2 тула (graphrag.index, graphrag.query).
+Результат: ответы уровня «как устроено», «где описано», «кто владелец».
+ES оставить как есть (BM25 + embeddings).
+В оркестрации Claude:
+для «найти место в коде» → ES + Sourcegraph (fusion);
+для «объяснить как устроено» → GraphRAG → при необходимости добрать кодом через ES/SG.
+Neo4j оставить, а связи из Sourcegraph (defs/refs/calls/imports) — при желании — завести отдельным слоем в том же графе (другие метки/типы рёбер). Так ты сможешь сравнивать/комбинировать с LlamaIndex PGI, не ломая существующий контент.
+Качество по слоям (почему это сильнее текущего)
+Точное структурное понимание кода: Sourcegraph+SCIP «понимает» код на уровне IDE → это качественнее, чем связи, извлечённые из LLM/PGI (меньше ложных рёбер, стабильные границы символов).
+Смысловая картина системы: GraphRAG автоматически строит семантический граф и «community summaries» по текстам — LlamaIndex PGI частично может похожее, но GraphRAG даёт готовые пайплайны и проверенную методологию.
+Надёжный поиск: твой ES уже хорош; добавление Sourcegraph-кандидатов и структурных фильтров повышает precision, не ломая пайплайн.
+Ответы на твои «это и или или?»
+SCIP / Sourcegraph — это «вместе». SCIP — формат/индекс; Sourcegraph — движок/сервер/API. Лучше ставить оба.
+GraphRAG CLI — это Microsoft GraphRAG. Да, именно он.
+Weaviate не нужен, если ES уже есть. Это альтернативный векторный движок. Оставь ES.
+Хочешь — распишу короткий чек-лист «включить за день»: какие галочки в Sourcegraph, какие команды GraphRAG, какие параметры по умолчанию для твоих существующих тулов, чтобы Claude сразу начал ими пользоваться.
