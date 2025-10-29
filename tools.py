@@ -3,6 +3,7 @@ from pathlib import Path
 import docker
 from retriever import retrieve_fusion_nodes, get_code_stats, get_architecture_stats
 from utils import KNOWLEDGE_ROOT, to_posix
+from sourcegraph import sg_search, sg_codeintel, sg_blob
 
 
 def main_search(question: str, path_prefix: str) -> str:
@@ -76,6 +77,46 @@ TOOLS_SCHEMA = [
                 "command": {"type": "string", "description": "Команда для выполнения"}
             },
             "required": ["command"]
+        }
+    },
+    {
+        "name": "sg_search",
+        "description": "Sourcegraph поиск по коду",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Поисковый запрос"},
+                "repo": {"type": "string", "description": "Репозиторий для поиска"},
+                "limit": {"type": "integer", "description": "Максимум результатов"}
+            },
+            "required": ["query"]
+        }
+    },
+    {
+        "name": "sg_codeintel",
+        "description": "Sourcegraph code intelligence - definitions, references, callers, callees",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "mode": {"type": "string", "description": "Режим: definitions, references, callers, callees"},
+                "symbol": {"type": "string", "description": "Имя символа"},
+                "doc_id": {"type": "string", "description": "ID документа"},
+                "line": {"type": "integer", "description": "Номер строки"}
+            },
+            "required": ["mode"]
+        }
+    },
+    {
+        "name": "sg_blob",
+        "description": "Sourcegraph blob - фрагмент кода по строкам",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "doc_id": {"type": "string", "description": "ID документа"},
+                "start_line": {"type": "integer", "description": "Начальная строка"},
+                "end_line": {"type": "integer", "description": "Конечная строка"}
+            },
+            "required": ["doc_id", "start_line", "end_line"]
         }
     }
 ]

@@ -22,6 +22,10 @@ ES_INDEX = os.getenv("ES_INDEX", "rag")
 ES_MANIFEST_INDEX = os.getenv("ES_MANIFEST_INDEX", "manifest")
 ES_URL = f"http://{ES_HOST}:{ES_PORT}"
 
+# Sourcegraph
+SOURCEGRAPH_URL = os.getenv("SOURCEGRAPH_URL", "http://localhost:3080")
+SOURCEGRAPH_TOKEN = os.getenv("SOURCEGRAPH_TOKEN", "")
+
 KNOWLEDGE_ROOT = Path("knowledge").resolve()
 
 LANG_BY_EXT = {

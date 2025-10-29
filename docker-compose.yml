@@ -24,6 +24,18 @@ services:
     depends_on:
       - elasticsearch
 
+  sourcegraph:
+    build: ./images/sourcegraph
+    restart: unless-stopped
+    environment:
+      - SOURCEGRAPH_DB_PASSWORD=${SOURCEGRAPH_DB_PASSWORD:-password}
+      - SOURCEGRAPH_SECRET_KEY=${SOURCEGRAPH_SECRET_KEY:-secret-key}
+    ports:
+      - "${SOURCEGRAPH_PORT:-3080}:3080"
+    volumes:
+      - ./data/sourcegraph:/var/opt/sourcegraph
+      - ./knowledge:/var/opt/sourcegraph/repos:ro
+
   rag-sandbox:
     build: ./images/sandbox
     image: rag-sandbox:stable

@@ -13,6 +13,7 @@ from tools import (
     architecture_stats,
     execute_command,
 )
+from sourcegraph import sg_search, sg_codeintel, sg_blob
 
 logger = setup_logging(Path(__file__).stem)
 
@@ -26,6 +27,9 @@ TOOLS_MAP = {
     "code_stats": lambda p: code_stats(p.get("path_prefix", "")),
     "architecture_stats": lambda p: architecture_stats(p.get("path_prefix", "")),
     "execute_command": lambda p: execute_command(p["command"]),
+    "sg_search": lambda p: sg_search(p["query"], p.get("repo", ""), p.get("limit", 20)),
+    "sg_codeintel": lambda p: sg_codeintel(p["mode"], p.get("symbol", ""), p.get("doc_id", ""), p.get("line", 0)),
+    "sg_blob": lambda p: sg_blob(p["doc_id"], p["start_line"], p["end_line"]),
 }
 
 def system_block(text):
