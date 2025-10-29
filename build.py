@@ -28,6 +28,7 @@ from utils import (
     CLAUDE_MODEL, ANTHROPIC_API_KEY, EMBED_MODEL, load_prompt,
     LANG_BY_EXT
 )
+from ast_semantic_splitter import create_semantic_chunks
 
 logger = setup_logging(Path(__file__).stem)
 
@@ -83,6 +84,15 @@ def get_splitter(lang):
 def split_doc_to_nodes(doc: Document):
     ext = Path(doc.doc_id).suffix.lower()
     lang = LANG_BY_EXT.get(ext)
+    
+    # Пробуем AST-aware разбиение для поддерживаемых языков
+    if lang and lang in ['python', 'javascript', 'typescript', 'java', 'go', 'rust']:
+        try:
+            return split_doc_to_ast_nodes(doc, lang)
+        except Exception as e:
+            logger.warning(f"AST splitting failed for {doc.doc_id}: {e}, falling back to CodeSplitter")
+    
+    # Fallback к обычному CodeSplitter
     splitter = get_splitter(lang)
     nodes = splitter.get_nodes_from_documents([doc])
     for i, node in enumerate(nodes):
@@ -97,6 +107,38 @@ def split_doc_to_nodes(doc: Document):
         else:
             node.metadata["start_line"] = 0
             node.metadata["end_line"] = doc.text.count('\n') + 1
+    return nodes
+
+def split_doc_to_ast_nodes(doc: Document, lang: str):
+    """Разбивает документ на узлы с использованием AST семантического разбиения"""
+    from llama_index.core.schema import TextNode
+    
+    # Создаем семантические чанки
+    semantic_chunks = create_semantic_chunks(doc.text, lang, doc.doc_id)
+    
+    nodes = []
+    for i, chunk in enumerate(semantic_chunks):
+        # Создаем TextNode из семантического чанка
+        node = TextNode(
+            text=chunk.text,
+            id_=f"{doc.doc_id}#{i+1}/{len(semantic_chunks)}",
+            metadata={
+                "chunk_id": i + 1,
+                "chunk_total": len(semantic_chunks),
+                "start_line": chunk.start_line,
+                "end_line": chunk.end_line,
+                "ast_type": chunk.node_type,
+                "ast_name": chunk.node_name,
+                "parent_type": chunk.parent_type,
+                "parent_name": chunk.parent_name,
+                "is_function": chunk.node_type in ['function_definition', 'function_declaration', 'method_definition'],
+                "is_class": chunk.node_type in ['class_definition', 'class_declaration'],
+                "is_method": chunk.node_type == 'method_definition',
+                "doc_id": doc.doc_id
+            }
+        )
+        nodes.append(node)
+    
     return nodes
 
 class TesseractImageReader(BaseReader):

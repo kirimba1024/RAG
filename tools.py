@@ -19,16 +19,40 @@ def main_search(question: str, path_prefix: str) -> str:
     return "\n\n".join(results)
 
 def query_graph(query: str, limit: int = 20) -> str:
-    result = GRAPH_STORE.structured_query(query)
-    if not result:
-        return "Результаты не найдены"
-    results = []
-    for item in result[:limit]:
-        if hasattr(item, "__dict__"):
-            results.append(str(item.__dict__))
-        else:
-            results.append(str(item))
-    return "\n".join(results)
+    """Универсальный запрос к графу: семантика + AST"""
+    try:
+        # Пробуем семантический граф
+        result = GRAPH_STORE.structured_query(query)
+        if result:
+            results = []
+            for item in result[:limit]:
+                if hasattr(item, "__dict__"):
+                    results.append(str(item.__dict__))
+                else:
+                    results.append(str(item))
+            return "\n".join(results)
+    except Exception as e:
+        logger.warning(f"Semantic graph query failed: {e}")
+    
+    # Fallback: прямой Cypher к AST графу
+    try:
+        from graph import GraphManager
+        from utils import NEO4J_BOLT_URL, NEO4J_USER, NEO4J_PASS
+        
+        with GraphManager(NEO4J_BOLT_URL, NEO4J_USER, NEO4J_PASS) as gm:
+            with gm.driver.session() as session:
+                result = session.run(query)
+                records = list(result)
+                if not records:
+                    return "Результаты не найдены"
+                
+                results = []
+                for record in records[:limit]:
+                    results.append(str(dict(record)))
+                return "\n".join(results)
+    except Exception as e:
+        logger.error(f"AST graph query failed: {e}")
+        return f"Ошибка выполнения запроса: {e}"
 
 def code_stats(path_prefix: str = "") -> str:
     return get_code_stats(path_prefix)
