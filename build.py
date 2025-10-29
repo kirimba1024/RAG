@@ -5,12 +5,10 @@ from datetime import datetime, UTC
 import pytesseract
 from PIL import Image
 from elasticsearch import Elasticsearch, helpers
-from llama_index.core import Document, Settings, PropertyGraphIndex
-from llama_index.core.indices.property_graph import SimpleLLMPathExtractor, ImplicitPathExtractor
+from llama_index.core import Document, Settings
 from llama_index.core.node_parser import SentenceSplitter, CodeSplitter
 from llama_index.core.readers.base import BaseReader
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
-from llama_index.graph_stores.neo4j import Neo4jPropertyGraphStore
 from llama_index.llms.anthropic import Anthropic as LlamaIndexAnthropic
 from llama_index.readers.file import (
     PyMuPDFReader,
@@ -24,7 +22,6 @@ from llama_index.readers.file import (
 from utils import (
     file_hash, KNOWLEDGE_ROOT, to_posix, setup_logging,
     ES_URL, ES_INDEX, ES_MANIFEST_INDEX,
-    NEO4J_BOLT_URL, NEO4J_USER, NEO4J_PASS,
     CLAUDE_MODEL, ANTHROPIC_API_KEY, EMBED_MODEL, load_prompt, LANG_BY_EXT
 )
 
@@ -33,29 +30,8 @@ logger = setup_logging(Path(__file__).stem)
 OCR_LANG = "rus+eng"
 
 ES = Elasticsearch(ES_URL, request_timeout=30, max_retries=3, retry_on_timeout=True)
-GRAPH_STORE = Neo4jPropertyGraphStore(url=NEO4J_BOLT_URL, username=NEO4J_USER, password=NEO4J_PASS)
 
 Settings.embed_model = HuggingFaceEmbedding(EMBED_MODEL, normalize=True)
-
-GRAPH_EXTRACTOR_LLM = LlamaIndexAnthropic(
-    model=CLAUDE_MODEL,
-    api_key=ANTHROPIC_API_KEY,
-    temperature=0.0,
-    default_headers={"anthropic-beta": "prompt-caching-2024-07-31"},
-    max_tokens=4096
-)
-
-PROP_GRAPH_INDEX = PropertyGraphIndex(
-    nodes=[],
-    property_graph_store=GRAPH_STORE,
-    show_progress=False,
-    kg_extractors=[
-        SimpleLLMPathExtractor(llm=GRAPH_EXTRACTOR_LLM, num_workers=2, extract_prompt=load_prompt("prompts/graph_extraction.txt")),
-        ImplicitPathExtractor(),
-    ],
-    include_text=False,
-    embed_kg_nodes=False,
-)
 
 SENTENCE_SPLITTER = SentenceSplitter(chunk_size=800, chunk_overlap=200, paragraph_separator="\n\n")
 SPLITTER_BY_LANG = {}
@@ -198,7 +174,6 @@ def add_file(rel_path, new_hash):
     t0 = time.time()
     doc = load_doc(rel_path)
     nodes = split_doc_to_nodes(doc)
-    PROP_GRAPH_INDEX.insert(doc)
     actions = []
     for node in nodes:
         embedding = Settings.embed_model.get_text_embedding(node.text)
@@ -252,7 +227,6 @@ def main():
         process_files()
     finally:
         ES.close()
-        GRAPH_STORE.close()
 
 if __name__ == "__main__":
     main()

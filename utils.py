@@ -16,12 +16,6 @@ RERANK_MODEL = os.getenv("RERANK_MODEL", "BAAI/bge-reranker-large")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-3-haiku-20240307")
 
-NEO4J_HOST = os.getenv("NEO4J_HOST", "localhost")
-NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
-NEO4J_PASS = os.getenv("NEO4J_PASS", "neo4jpass")
-NEO4J_BOLT_PORT = os.getenv("NEO4J_BOLT_PORT", "7687")
-NEO4J_BOLT_URL = f"bolt://{NEO4J_HOST}:{NEO4J_BOLT_PORT}"
-
 ES_HOST = os.getenv("ES_HOST", "localhost")
 ES_PORT = int(os.getenv("ES_PORT", "9200"))
 ES_INDEX = os.getenv("ES_INDEX", "rag")

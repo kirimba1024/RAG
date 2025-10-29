@@ -1,11 +1,9 @@
 import subprocess
 from pathlib import Path
 import docker
-from llama_index.graph_stores.neo4j import Neo4jPropertyGraphStore
 from retriever import retrieve_fusion_nodes, get_code_stats, get_architecture_stats
-from utils import KNOWLEDGE_ROOT, to_posix, NEO4J_BOLT_URL, NEO4J_USER, NEO4J_PASS
+from utils import KNOWLEDGE_ROOT, to_posix
 
-GRAPH_STORE = Neo4jPropertyGraphStore(url=NEO4J_BOLT_URL, username=NEO4J_USER, password=NEO4J_PASS)
 
 def main_search(question: str, path_prefix: str) -> str:
     nodes = retrieve_fusion_nodes(question, path_prefix)
@@ -18,17 +16,6 @@ def main_search(question: str, path_prefix: str) -> str:
         results.append(f"{header}:\n{node.text}")
     return "\n\n".join(results)
 
-def query_graph(query: str, limit: int = 20) -> str:
-    result = GRAPH_STORE.structured_query(query)
-    if not result:
-        return "Результаты не найдены"
-    results = []
-    for item in result[:limit]:
-        if hasattr(item, "__dict__"):
-            results.append(str(item.__dict__))
-        else:
-            results.append(str(item))
-    return "\n".join(results)
 
 def code_stats(path_prefix: str = "") -> str:
     return get_code_stats(path_prefix)
@@ -56,18 +43,6 @@ TOOLS_SCHEMA = [
                 "path_prefix": {"type": "string", "description": "Префикс пути"}
             },
             "required": ["question"]
-        }
-    },
-    {
-        "name": "query_graph",
-        "description": "Cypher-запрос к графу знаний",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "Cypher запрос"},
-                "limit": {"type": "integer", "description": "Максимум результатов"}
-            },
-            "required": ["query"]
         }
     },
     {
