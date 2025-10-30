@@ -33,7 +33,7 @@
 ✓ code_stats/architecture_stats - для понимания масштаба и архитектуры
 
 ВАЖНО: execute_command может заменить многие инструменты:
-Доступные утилиты: grep, find, awk, sed, bash, curl, wget, jq, tree, file, diff, less, vim
+Доступные утилиты: grep, find, awk, sed, bash, curl, wget, git, jq, tree, file, diff, less, vim
 ВНИМАНИЕ: Файловая система только для чтения - можно анализировать, но не изменять файлы
 
 БАЗОВЫЕ ОПЕРАЦИИ:

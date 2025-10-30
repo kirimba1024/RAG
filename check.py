@@ -1,4 +1,4 @@
-from utils import KNOWLEDGE_ROOT, to_posix
+from utils import REPOS_ROOT, to_posix
 from mask import SECRET_PATTERNS
 from rich.progress import track
 
@@ -36,26 +36,4 @@ def check_secrets_in_text(text: str) -> list[dict]:
     return findings
 
 
-def main():
-    """Основная функция сканирования."""
-    files = [p for p in KNOWLEDGE_ROOT.rglob("*") if p.is_file()]
-    all_findings = []
-    
-    for path in track(files, description="[cyan]Сканирование..."):
-        try:
-            findings = check_secrets_in_text(path.read_text(encoding="utf-8"))
-            if findings:
-                rel_posix = to_posix(path.relative_to(KNOWLEDGE_ROOT))
-                for f in findings:
-                    f['file'] = rel_posix
-                all_findings.extend(findings)
-        except (UnicodeDecodeError, OSError, PermissionError):
-            pass
-    
-    print(f"\n🚨 {len(all_findings)}\n" if all_findings else f"\n✅ Секреты не найдены ({len(files)} файлов)\n")
-    for f in all_findings:
-        print(f"{f['file']}:{f['line']} {f['type']} {f['match']}")
-
-
-if __name__ == '__main__':
-    main()
+ 

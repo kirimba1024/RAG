@@ -30,6 +30,7 @@ TOOLS_MAP = {
     "sg_search": lambda p: sg_search(p["query"], p.get("repo", ""), p.get("limit", 20)),
     "sg_codeintel": lambda p: sg_codeintel(p["mode"], p.get("symbol", ""), p.get("doc_id", ""), p.get("line", 0)),
     "sg_blob": lambda p: sg_blob(p["doc_id"], p["start_line"], p["end_line"]),
+    "graphrag_query": lambda p: __import__("tools").graphrag_query(p["task"], p.get("root"), p.get("k", 5)),
 }
 
 def system_block(text):

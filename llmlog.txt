@@ -1,0 +1,11 @@
+- SG: автопровижининг (admin, repos, autoindex), src-cli в образе, repos init вручную.
+- .env: добавлены SOURCEGRAPH_ADMIN_*, PROVISION_REPOS=1; .gitignore позволяет .env.
+- Репозитории: работаем из repos/, отказ от knowledge/; REPOS_ROOT вместо KNOWLEDGE_ROOT.
+- Sandbox: монтируем repos → /app, добавлен git, обновлены сообщения entrypoint.
+- Sourcegraph tools: sg_search/sg_codeintel/sg_blob упрощены; добавлены sg_get_file_content, sg_list_repos, sg_list_repo_files, sg_file_chunks (символы→чанки, fallback по строкам).
+- Индексация ES (build.py): полностью через SG+SCIP чанки; хэш по контенту SG; дифф манифеста против actual из SG; удаление из ES по удалённым; маскировка секретов и лог находок; ignore на уровне файла.
+- Упрощение build.py: удалены ридеры/try-except/старые сплиттеры; чистый пайплайн SG→ES.
+- GraphRAG: вынесен в graphrag_build.py; build.py больше не вызывает пересборку.
+- tools.py: упрощён, graphrag_query без обёрток, REPOS_ROOT напрямую.
+- Промпты: chat_system_gather.txt — добавлен git в список утилит.
+- Прочее: удалён PROP_GRAPH_INDEX; удалены сканы по всему дереву из check.py; mask.py теперь предоставляет mask_secrets для текста.

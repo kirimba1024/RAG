@@ -10,6 +10,7 @@ RUN apk add --no-cache \
     bash \
     curl \
     wget \
+    git \
     jq \
     tree \
     file \

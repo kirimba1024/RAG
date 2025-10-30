@@ -1,8 +1,7 @@
 import subprocess
-from pathlib import Path
 import docker
 from retriever import retrieve_fusion_nodes, get_code_stats, get_architecture_stats
-from utils import KNOWLEDGE_ROOT, to_posix
+from utils import REPOS_ROOT, to_posix
 from sourcegraph import sg_search, sg_codeintel, sg_blob
 
 
@@ -33,6 +32,19 @@ def execute_command(command: str) -> str:
     )
     return result.output.decode('utf-8')
 
+def graphrag_query(task: str, root: str = None, k: int = 5) -> str:
+    base = REPOS_ROOT
+    root_path = to_posix(base if not root else base / root)
+    proc = subprocess.run(
+        ["graphrag", "run", "query", "-t", task, "-k", str(k)],
+        cwd=root_path,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    return proc.stdout
+
 TOOLS_SCHEMA = [
     {
         "name": "main_search",
@@ -44,6 +56,19 @@ TOOLS_SCHEMA = [
                 "path_prefix": {"type": "string", "description": "Префикс пути"}
             },
             "required": ["question"]
+        }
+    },
+    {
+        "name": "graphrag_query",
+        "description": "Запрос к индексу GraphRAG CLI",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "task": {"type": "string", "description": "Вопрос/задача"},
+                "root": {"type": "string", "description": "путь к папке"},
+                "k": {"type": "integer", "description": "Кол-во источников", "default": 5}
+            },
+            "required": ["task"]
         }
     },
     {

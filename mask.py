@@ -1,6 +1,6 @@
 from pathlib import Path
 import re
-from utils import setup_logging, KNOWLEDGE_ROOT, to_posix
+from utils import setup_logging, REPOS_ROOT, to_posix
 
 logger = setup_logging(Path(__file__).stem)
 
@@ -123,33 +123,3 @@ def mask_secrets(text: str) -> tuple[str, list]:
         text = pat.sub(repl, text)
     
     return text, findings
-
-
-def main():
-    """Обрабатывает все файлы в KNOWLEDGE_ROOT, маскируя секреты."""
-    total = 0
-    
-    for path in (p for p in KNOWLEDGE_ROOT.rglob("*") if p.is_file()):
-        rel_posix = to_posix(path.relative_to(KNOWLEDGE_ROOT))
-        try:
-            masked, findings = mask_secrets(path.read_text(encoding="utf-8"))
-            path.write_text(masked, encoding="utf-8")
-            
-            if findings:
-                total += len(findings)
-                logger.info(f"✅ {rel_posix} - {len(findings)} секретов:")
-                for line, emoji, preview in findings[:5]:
-                    logger.info(f"  {emoji} {line}: {preview}")
-                if len(findings) > 5:
-                    logger.info(f"  ... ещё {len(findings) - 5}")
-            else:
-                logger.info(f"✅ {rel_posix}")
-        except (UnicodeDecodeError, Exception) as e:
-            logger.info(f"⚪ {rel_posix}") if isinstance(e, UnicodeDecodeError) else logger.warning(f"❌ {rel_posix}: {e}")
-    
-    if total:
-        logger.info(f"\n🔒 Всего: {total}")
-
-
-if __name__ == '__main__':
-    main()

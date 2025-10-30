@@ -30,15 +30,19 @@ services:
     environment:
       - SOURCEGRAPH_DB_PASSWORD=${SOURCEGRAPH_DB_PASSWORD:-password}
       - SOURCEGRAPH_SECRET_KEY=${SOURCEGRAPH_SECRET_KEY:-secret-key}
+      - SOURCEGRAPH_INITIAL_SITE_ADMIN_USERNAME=${SOURCEGRAPH_ADMIN_USER:-admin}
+      - SOURCEGRAPH_INITIAL_SITE_ADMIN_PASSWORD=${SOURCEGRAPH_ADMIN_PASS:-password}
+      - SOURCEGRAPH_INITIAL_SITE_ADMIN_EMAIL=${SOURCEGRAPH_ADMIN_EMAIL:-admin@example.com}
+      - PROVISION_REPOS=1
     ports:
       - "${SOURCEGRAPH_PORT:-3080}:3080"
     volumes:
       - ./data/sourcegraph:/var/opt/sourcegraph
-      - ./knowledge:/var/opt/sourcegraph/repos:ro
+      - ./repos:/var/opt/sourcegraph/repos:ro
 
   rag-sandbox:
     build: ./images/sandbox
     image: rag-sandbox:stable
     volumes:
-      - ./knowledge:/app:ro
+      - ./repos:/app:ro
     restart: unless-stopped

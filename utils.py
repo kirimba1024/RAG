@@ -4,6 +4,8 @@ import hashlib, base64
 import logging
 import re
 import unicodedata
+import requests
+import subprocess
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -26,7 +28,7 @@ ES_URL = f"http://{ES_HOST}:{ES_PORT}"
 SOURCEGRAPH_URL = os.getenv("SOURCEGRAPH_URL", "http://localhost:3080")
 SOURCEGRAPH_TOKEN = os.getenv("SOURCEGRAPH_TOKEN", "")
 
-KNOWLEDGE_ROOT = Path("knowledge").resolve()
+REPOS_ROOT = Path("repos").resolve()
 
 LANG_BY_EXT = {
     ".py": "python", ".js": "javascript", ".jsx": "javascript",

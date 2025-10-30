@@ -42,9 +42,6 @@ logs/
 data/
 !data/.gitkeep
 
-knowledge/
-!knowledge/.gitkeep
-
 storage/
 cache/
 tmp/
@@ -71,4 +68,4 @@ vector_store/
 *.lock
 
 # --- Environment ---
-.env
+!.env
