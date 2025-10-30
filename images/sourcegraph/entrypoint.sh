@@ -56,7 +56,7 @@ JSON
   if [ -d "/var/opt/sourcegraph/repos" ]; then
     find /var/opt/sourcegraph/repos -maxdepth 2 -type d -name .git | while read -r gitdir; do
       repo_dir="$(dirname "$gitdir")"
-      name="local/$(basename "$repo_dir")"
+      name="$(basename "$repo_dir")"
       url="file://$repo_dir"
       echo "[sourcegraph] Adding repo $name -> $url"
       src repos add -name "$name" -url "$url" >/dev/null 2>&1 || true

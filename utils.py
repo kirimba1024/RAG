@@ -7,6 +7,8 @@ import unicodedata
 import requests
 import subprocess
 from dotenv import load_dotenv
+from pathspec import PathSpec
+from mask import SECRET_PATTERNS
 
 load_dotenv()
 
@@ -24,7 +26,6 @@ ES_INDEX = os.getenv("ES_INDEX", "rag")
 ES_MANIFEST_INDEX = os.getenv("ES_MANIFEST_INDEX", "manifest")
 ES_URL = f"http://{ES_HOST}:{ES_PORT}"
 
-# Sourcegraph
 SOURCEGRAPH_URL = os.getenv("SOURCEGRAPH_URL", "http://localhost:3080")
 SOURCEGRAPH_TOKEN = os.getenv("SOURCEGRAPH_TOKEN", "")
 
@@ -69,6 +70,8 @@ def setup_logging(name: str) -> logging.Logger:
     logger.propagate = False
     return logger
 
+logger = setup_logging("utils")
+
 def message_for_log(text: str, max_size = 256) -> str:
     text = text.strip().replace("\n", " ").replace("\r", " ").replace("\t", " ")
     if len(text) <= max_size:
@@ -97,8 +100,6 @@ def to_posix(p: str | Path) -> str:
     return s
 
 def clean_text(text: str) -> str:
-    if not text:
-        return ""
     text = unicodedata.normalize("NFKC", text)
     text = re.sub(r"[\u200b\u200e\u200f\u202a-\u202e]", "", text)
     text = re.sub(r"(\w)-\n(\w)", r"\1\2", text)
@@ -107,6 +108,39 @@ def clean_text(text: str) -> str:
     return text.strip()
 
 def file_hash(path, algo="sha256"):
-    import hashlib
     with open(path, "rb") as f:
         return hashlib.file_digest(f, algo).hexdigest()
+
+IGNORE_FILE = Path(".ignore")
+IGNORE_SPEC = PathSpec.from_lines("gitwildmatch", IGNORE_FILE.read_text(encoding="utf-8").splitlines())
+
+def is_ignored(rel_path: Path) -> bool:
+    return IGNORE_SPEC.match_file(to_posix(rel_path))
+
+EMOJI_MAP = [
+    (['private key', 'pem', 'pgp', 'certificate'], '🔐'),
+    (['password', 'passwd', 'pwd'], '🔑'),
+    (['token', 'bearer', 'jwt'], '🎫'),
+    (['api', 'key', 'secret'], '🗝️'),
+    (['jdbc', 'mongodb', 'postgres', 'mysql', 'redis'], '🗄️'),
+    (['aws', 'vault', 'keycloak'], '☁️'),
+]
+
+def classify_secret_type(pattern: str) -> str:
+    pattern_lower = pattern.lower()
+    for keywords, emoji in EMOJI_MAP:
+        if any(k in pattern_lower for k in keywords):
+            return emoji
+    return '⚠️'
+
+def check_secrets_in_text(text: str) -> list[dict]:
+    findings = []
+    for pat, _ in SECRET_PATTERNS:
+        for match in pat.finditer(text):
+            match_text = match.group(0)
+            findings.append({
+                'match': match_text if len(match_text) <= 120 else match_text[:120] + '...',
+                'line': text[:match.start()].count('\n') + 1,
+                'type': classify_secret_type(pat.pattern)
+            })
+    return findings

@@ -1,7 +1,6 @@
 """Sourcegraph инструменты для работы с кодом через GraphQL API"""
 
 import requests
-import json
 from utils import SOURCEGRAPH_URL, SOURCEGRAPH_TOKEN, setup_logging
 from pathlib import Path
 

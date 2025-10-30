@@ -13,9 +13,8 @@ from utils import (
     EMBED_MODEL,
 )
 from sourcegraph import sg_file_chunks, sg_get_file_content, sg_list_repos, sg_list_repo_files
-from ignore import is_ignored
+from utils import is_ignored, check_secrets_in_text
 from mask import mask_secrets
-from check import check_secrets_in_text
 
 logger = setup_logging(Path(__file__).stem)
 
@@ -74,9 +73,10 @@ def delete_file(rel_path):
 
 def add_file(rel_path, new_hash):
     t0 = time.time()
-    repo_dir = rel_path.split("/", 1)[0]
-    repo_name = f"local/{repo_dir}"
-    file_path = rel_path.split("/", 1)[1] if "/" in rel_path else ""
+    parts = rel_path.split("/", 1)
+    repo_dir = parts[0]
+    file_path = parts[1] if len(parts) > 1 else ""
+    repo_name = repo_dir
     chunks = sg_file_chunks(repo_name, file_path)
     if not chunks:
         logger.info(f"⏭️  Skipped {rel_path} (no chunks)")
@@ -94,14 +94,14 @@ def add_file(rel_path, new_hash):
         if not text:
             continue
         node = Document(text=text, metadata={
-            "doc_id": f"{repo_name}/{file_path}",
+            "doc_id": f"{repo_dir}/{file_path}",
             "start_line": start,
             "end_line": end,
             "symbol": ch.get("title", ""),
             "kind": ch.get("kind", ""),
             "chunk_id": i,
             "chunk_total": total,
-        }, doc_id=f"{repo_name}/{file_path}#{i}/{total}")
+        }, doc_id=f"{repo_dir}/{file_path}#{i}/{total}")
         embedding = Settings.embed_model.get_text_embedding(node.text)
         actions.append(to_es_action(node, node, embedding))
     helpers.bulk(ES.options(request_timeout=120), actions, chunk_size=2000, raise_on_error=True)
@@ -118,7 +118,7 @@ def process_file(rel_path):
         if stored_hash:
             delete_file(rel_path)
         return
-    repo_name = f"local/{repo_dir}"
+    repo_name = repo_dir
     content = sg_get_file_content(repo_name, file_rel)
     current_hash = calc_hash(content) if content else None
     stored_hash = get_manifest_hash(rel_path)
@@ -134,8 +134,8 @@ def process_files():
     result = ES.search(index=ES_MANIFEST_INDEX, body={"query": {"match_all": {}}, "size": 10000, "_source": ["path"]})
     manifest_paths = {hit["_source"]["path"] for hit in result["hits"]["hits"]}
     fs_files = set()
-    for repo_full_name in sg_list_repos(prefix="local/"):
-        repo_dir = repo_full_name.split("/", 1)[1] if "/" in repo_full_name else repo_full_name
+    for repo_full_name in sg_list_repos(prefix=""):
+        repo_dir = repo_full_name
         for path in sg_list_repo_files(repo_full_name):
             fs_files.add(f"{repo_dir}/{path}")
     deleted_paths = manifest_paths - fs_files

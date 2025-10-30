@@ -9,3 +9,6 @@
 - tools.py: упрощён, graphrag_query без обёрток, REPOS_ROOT напрямую.
 - Промпты: chat_system_gather.txt — добавлен git в список утилит.
 - Прочее: удалён PROP_GRAPH_INDEX; удалены сканы по всему дереву из check.py; mask.py теперь предоставляет mask_secrets для текста.
+- Рефакторинг utils.py: перенесён весь код из ignore.py (is_ignored, IGNORE_SPEC) и check.py (check_secrets_in_text, classify_secret_type, EMOJI_MAP) в utils.py для централизации утилит; удалены файлы ignore.py и check.py.
+- Упрощение utils.py: удалены проверки существования REPOS_ROOT и IGNORE_FILE (правило "не страхуйся"), создан глобальный logger для utils вместо создания внутри функций; все импорты вынесены в глобальные (убраны локальные import hashlib и from mask import).
+- Исправление по .cursorrules: удалены страховки от граничных случаев (if not text в clean_text), удалены комментарии (# Sourcegraph), все импорты только глобальные.
