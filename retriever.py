@@ -26,7 +26,7 @@ def normal_prefix(id_prefix):
 
 
 class HybridESRetriever(BaseRetriever):
-    def __init__(self, es, index, top_k=20, path_prefix: str = "", rev: str = None):
+    def __init__(self, es, index, path_prefix: str, rev: str, top_k=20):
         super().__init__()
         self.es = es
         self.index = index
@@ -39,8 +39,7 @@ class HybridESRetriever(BaseRetriever):
         filters = []
         if self.path_prefix:
             filters.append({"prefix": {"doc_id": self.path_prefix}})
-        if self.rev:
-            filters.append({"term": {"metadata.rev": self.rev}})
+        filters.append({"term": {"metadata.rev": self.rev}})
         body = {
             "size": self.top_k,
             "knn": {
@@ -83,25 +82,12 @@ class HybridESRetriever(BaseRetriever):
         return nodes
 
 
-def retrieve_fusion_nodes(question: str, path_prefix: str = "", rev: str = "") -> List[BaseNode]:
-    if not rev:
-        repo_name = path_prefix.split("/")[0] if path_prefix else None
-        if not repo_name:
-            repos = ES.search(
-                index=ES_INDEX,
-                body={"size": 0, "aggs": {"repos": {"terms": {"field": "doc_id.keyword", "size": 1}}}},
-                request_timeout=10
-            )
-            buckets = repos.get("aggregations", {}).get("repos", {}).get("buckets", [])
-            if buckets:
-                first_doc_id = buckets[0]["key"]
-                repo_name = first_doc_id.split("/")[0]
-        if repo_name:
-            rev = sg_get_repo_rev(repo_name)
-    retriever = HybridESRetriever(es=ES, index=ES_INDEX, top_k=30, path_prefix=path_prefix, rev=rev if rev else None)
+def retrieve_fusion_nodes(question: str, path_prefix: str, rev: str, top_n: int) -> List[BaseNode]:
+    retriever = HybridESRetriever(es=ES, index=ES_INDEX, path_prefix=path_prefix, rev=rev, top_k=top_n * 3)
     candidates = retriever.retrieve(question)
     logger.info(f"🔍 Retriever вернул {len(candidates)} чанков (query: '{question[:50]}...', rev={rev or 'all'})")
     qb = QueryBundle(query_str=question)
+    RERANKER.top_n = top_n
     reranked = RERANKER.postprocess_nodes(candidates, query_bundle=qb)
     logger.info(f"⭐ Reranker отобрал {len(reranked)} чанков из {len(candidates)}")
     return [nws.node for nws in reranked]

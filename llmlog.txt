@@ -12,3 +12,9 @@
 - Рефакторинг utils.py: перенесён весь код из ignore.py (is_ignored, IGNORE_SPEC) и check.py (check_secrets_in_text, classify_secret_type, EMOJI_MAP) в utils.py для централизации утилит; удалены файлы ignore.py и check.py.
 - Упрощение utils.py: удалены проверки существования REPOS_ROOT и IGNORE_FILE (правило "не страхуйся"), создан глобальный logger для utils вместо создания внутри функций; все импорты вынесены в глобальные (убраны локальные import hashlib и from mask import).
 - Исправление по .cursorrules: удалены страховки от граничных случаев (if not text в clean_text), удалены комментарии (# Sourcegraph), все импорты только глобальные.
+
+- Ветки (rev) в индексации: добавлено поле rev в manifest ES и metadata каждого чанка; функция sg_get_repo_rev получает текущую ветку из Sourcegraph; логика синхронизации сравнивает hash и rev - при изменении rev добавляются новые чанки, старые не удаляются; хранятся все ветки всех репозиториев.
+- Фильтрация по веткам: retriever.py фильтрует чанки по metadata.rev при поиске; если rev не указан, определяется из path_prefix или первого репозитория; main_search требует обязательный параметр rev в схеме tools.
+- Список веток в промптах: добавлены функции get_all_repos_branches и get_all_repos_branches_formatted в sourcegraph.py; список веток всех репозиториев автоматически вставляется в navigation промпт через placeholder {BRANCHES_INFO}; компактный формат (первые 10 веток, остальные +N).
+- Бинарные файлы: sg_get_file_content возвращает None для бинарных файлов; добавлена extract_binary_content с поддержкой PDF/DOCX/PPTX/CSV/XLS/изображений через OCR (pytesseract); бинарные файлы создают один чанк с обрезкой до 4096 символов, kind="binary".
+- Упрощения: убрана лишняя проверка content в calc_hash; функция sg_list_repo_branches удалена, логика встроена в get_all_repos_branches.

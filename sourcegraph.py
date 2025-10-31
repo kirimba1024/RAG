@@ -22,7 +22,7 @@ def _execute_graphql(query: str, variables: dict | None = None) -> dict:
     return resp.json()
 
 
-def sg_search(query: str, repo: str = "", limit: int = 20) -> str:
+def sg_search(query: str, repo: str, limit: int) -> str:
     repo_filter = f"repo:{repo}" if repo else ""
     search_query = f"{repo_filter} {query}" if repo_filter else query
     gql_query = """
@@ -45,9 +45,7 @@ def sg_search(query: str, repo: str = "", limit: int = 20) -> str:
     return "\n".join(out)
 
 
-def sg_codeintel(mode: str, symbol: str = "", doc_id: str = "", line: int = 0) -> str:
-    if not symbol:
-        return f"Необходимо указать symbol для режима {mode}"
+def sg_codeintel(mode: str, symbol: str, doc_id: str, line: int) -> str:
     gql_query_map = {
         "definitions": """
           query Definitions($symbol: String!) {

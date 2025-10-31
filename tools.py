@@ -5,8 +5,8 @@ from utils import REPOS_ROOT, to_posix
 from sourcegraph import sg_search, sg_codeintel, sg_blob
 
 
-def main_search(question: str, path_prefix: str = "", rev: str = "") -> str:
-    nodes = retrieve_fusion_nodes(question, path_prefix, rev)
+def main_search(question: str, path_prefix: str, rev: str, top_n: int) -> str:
+    nodes = retrieve_fusion_nodes(question, path_prefix, rev, top_n)
     results = []
     for node in nodes:
         doc_id = node.metadata['doc_id']
@@ -16,11 +16,10 @@ def main_search(question: str, path_prefix: str = "", rev: str = "") -> str:
         results.append(f"{header}:\n{node.text}")
     return "\n\n".join(results)
 
-
-def code_stats(path_prefix: str = "") -> str:
+def code_stats(path_prefix: str) -> str:
     return get_code_stats(path_prefix)
 
-def architecture_stats(path_prefix: str = "") -> str:
+def architecture_stats(path_prefix: str) -> str:
     return get_architecture_stats(path_prefix)
 
 def execute_command(command: str) -> str:
@@ -32,7 +31,7 @@ def execute_command(command: str) -> str:
     )
     return result.output.decode('utf-8')
 
-def graphrag_query(task: str, root: str = None, k: int = 5) -> str:
+def graphrag_query(task: str, root: str, k: int) -> str:
     base = REPOS_ROOT
     root_path = to_posix(base if not root else base / root)
     proc = subprocess.run(
@@ -53,10 +52,11 @@ TOOLS_SCHEMA = [
             "type": "object",
             "properties": {
                 "question": {"type": "string", "description": "Поисковый запрос"},
-                "path_prefix": {"type": "string", "description": "Префикс пути"},
-                "rev": {"type": "string", "description": "Ветка/коммит для фильтрации (ОБЯЗАТЕЛЬНО указывать конкретную ветку из списка доступных веток репозитория)"}
+                "path_prefix": {"type": "string", "description": "Префикс пути (пустая строка если не фильтруем)"},
+                "rev": {"type": "string", "description": "Ветка/коммит для фильтрации (ОБЯЗАТЕЛЬНО указывать конкретную ветку из списка доступных веток репозитория)"},
+                "top_n": {"type": "integer", "minimum": 1, "maximum": 30, "description": "Количество результатов после reranking (диапазон 1-30, стандартное значение: 10)"}
             },
-            "required": ["question", "rev"]
+            "required": ["question", "path_prefix", "rev", "top_n"]
         }
     },
     {
@@ -66,10 +66,10 @@ TOOLS_SCHEMA = [
             "type": "object",
             "properties": {
                 "task": {"type": "string", "description": "Вопрос/задача"},
-                "root": {"type": "string", "description": "путь к папке"},
-                "k": {"type": "integer", "description": "Кол-во источников", "default": 5}
+                "root": {"type": "string", "description": "Путь к папке (пустая строка \"\" для корня репозитория)"},
+                "k": {"type": "integer", "description": "Кол-во источников (стандартное значение: 5)"}
             },
-            "required": ["task"]
+            "required": ["task", "root", "k"]
         }
     },
     {
@@ -78,9 +78,9 @@ TOOLS_SCHEMA = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "path_prefix": {"type": "string", "description": "Префикс пути для фильтрации"}
+                "path_prefix": {"type": "string", "description": "Префикс пути (пустая строка если не фильтруем)"}
             },
-            "required": []
+            "required": ["path_prefix"]
         }
     },
     {
@@ -89,9 +89,9 @@ TOOLS_SCHEMA = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "path_prefix": {"type": "string", "description": "Префикс пути для фильтрации"}
+                "path_prefix": {"type": "string", "description": "Префикс пути (пустая строка если не фильтруем)"}
             },
-            "required": []
+            "required": ["path_prefix"]
         }
     },
     {
@@ -112,10 +112,10 @@ TOOLS_SCHEMA = [
             "type": "object",
             "properties": {
                 "query": {"type": "string", "description": "Поисковый запрос"},
-                "repo": {"type": "string", "description": "Репозиторий для поиска"},
-                "limit": {"type": "integer", "description": "Максимум результатов"}
+                "repo": {"type": "string", "description": "Репозиторий для поиска (пустая строка \"\" для всех репозиториев)"},
+                "limit": {"type": "integer", "description": "Максимум результатов (стандартное значение: 20)"}
             },
-            "required": ["query"]
+            "required": ["query", "repo", "limit"]
         }
     },
     {
@@ -125,11 +125,11 @@ TOOLS_SCHEMA = [
             "type": "object",
             "properties": {
                 "mode": {"type": "string", "description": "Режим: definitions, references, callers, callees"},
-                "symbol": {"type": "string", "description": "Имя символа"},
-                "doc_id": {"type": "string", "description": "ID документа"},
-                "line": {"type": "integer", "description": "Номер строки"}
+                "symbol": {"type": "string", "description": "Имя символа (пустая строка \"\" если не используется)"},
+                "doc_id": {"type": "string", "description": "ID документа (пустая строка \"\" если не используется)"},
+                "line": {"type": "integer", "description": "Номер строки (стандартное значение: 0 если не используется)"}
             },
-            "required": ["mode"]
+            "required": ["mode", "symbol", "doc_id", "line"]
         }
     },
     {
