@@ -49,12 +49,6 @@ def delete_chunks(rel_path, branch):
         allow_no_indices=True
     )
 
-def delete_file(rel_path, branch):
-    t0 = time.time()
-    delete_chunks(rel_path, branch)
-    delete_manifest(rel_path, branch)
-    logger.info(f"🗑️ Deleted {rel_path} (branch={branch}) in {time.time()-t0:.2f}s")
-
 def chunks_to_actions(chunks: list[dict], rel_path: str, branch: str) -> list[dict]:
     total = len(chunks)
     actions = []
@@ -84,10 +78,9 @@ def chunks_to_actions(chunks: list[dict], rel_path: str, branch: str) -> list[di
 def add_file(rel_path, new_hash, branch):
     t0 = time.time()
     chunks = get_file_chunks(rel_path, branch)
-    if chunks:
-        actions = chunks_to_actions(chunks, rel_path, branch)
-        helpers.bulk(ES.options(request_timeout=120), actions, chunk_size=2000, raise_on_error=True)
-        logger.info(f"➕ Added {rel_path} ({len(chunks)} chunks, branch={branch}) in {time.time()-t0:.2f}s")
+    actions = chunks_to_actions(chunks, rel_path, branch)
+    helpers.bulk(ES.options(request_timeout=120), actions, chunk_size=2000, raise_on_error=True)
+    logger.info(f"➕ Added {rel_path} ({len(chunks)} chunks, branch={branch}) in {time.time()-t0:.2f}s")
     upsert_manifest(rel_path, new_hash, branch)
 
 def process_files():
@@ -109,23 +102,29 @@ def process_files():
         branches = sg_list_repo_branches(repo)
         for branch in branches:
             for rel_path, current_hash in sg_list_repo_files(repo, branch):
-                key = (rel_path, branch)
-                processed_keys.add(key)
-                stored_hash = manifest_hash_by_file.get(key)
-                if current_hash == stored_hash and current_hash is not None:
-                    logger.debug(f"⏭️  Skipped {rel_path} (unchanged, branch={branch})")
-                    continue
-                if is_ignored(Path(rel_path)) or not current_hash:
-                    if stored_hash:
+                try:
+                    key = (rel_path, branch)
+                    processed_keys.add(key)
+                    stored_hash = manifest_hash_by_file.get(key)
+                    if current_hash == stored_hash and current_hash is not None:
+                        logger.debug(f"⏭️  Skipped {rel_path} (unchanged, branch={branch})")
+                        continue
+                    if is_ignored(Path(rel_path)) or not current_hash:
+                        if stored_hash:
+                            delete_chunks(rel_path, branch)
+                            upsert_manifest(rel_path, None, branch)
+                        continue
+                    if stored_hash and stored_hash != current_hash:
                         delete_chunks(rel_path, branch)
-                        upsert_manifest(rel_path, None, branch)
-                    continue
-                if stored_hash and stored_hash != current_hash:
-                    delete_chunks(rel_path, branch)
-                add_file(rel_path, current_hash, branch)
+                    add_file(rel_path, current_hash, branch)
+                except Exception as e:
+                    logger.error(f"Failed to process file {rel_path} (branch={branch}): {e}")
     for rel_path, branch in set(manifest_hash_by_file.keys()) - processed_keys:
-        delete_chunks(rel_path, branch)
-        delete_manifest(rel_path, branch)
+        try:
+            delete_chunks(rel_path, branch)
+            delete_manifest(rel_path, branch)
+        except Exception as e:
+            logger.error(f"Failed to delete file {rel_path} (branch={branch}): {e}")
 
 def main():
     try:

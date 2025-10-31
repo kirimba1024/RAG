@@ -30,9 +30,9 @@ TOOLS_MAP = {
     "code_stats": lambda p: code_stats(p["path_prefix"]),
     "architecture_stats": lambda p: architecture_stats(p["path_prefix"]),
     "execute_command": lambda p: execute_command(p["command"]),
-    "sg_search": lambda p: sg_search(p["query"], p["repo"], p["limit"]),
-    "sg_codeintel": lambda p: sg_codeintel(p["mode"], p["symbol"], p["doc_id"], p["line"]),
-    "sg_blob": lambda p: sg_blob(p["doc_id"], p["start_line"], p["end_line"], p["branch"]),
+    "sg_search": lambda p: sg_search(p["query"], p["repo"], p["branch"], p["limit"]),
+    "sg_codeintel": lambda p: sg_codeintel(p["mode"], p["symbol"], p["repo"], p["branch"]),
+    "sg_blob": lambda p: sg_blob(p["rel_path"], p["start_line"], p["end_line"], p["branch"]),
     "graphrag_query": lambda p: graphrag_query(p["task"], p["root"], p["k"]),
 }
 

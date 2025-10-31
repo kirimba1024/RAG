@@ -113,10 +113,11 @@ TOOLS_SCHEMA = [
             "type": "object",
             "properties": {
                 "query": {"type": "string", "description": "Поисковый запрос"},
-                "repo": {"type": "string", "description": "Репозиторий для поиска (пустая строка \"\" для всех репозиториев)"},
-                "limit": {"type": "integer", "description": "Максимум результатов (стандартное значение: 20)"}
+                "repo": {"type": "string", "description": "Название репозитория (пустая строка если не фильтруем)"},
+                "branch": {"type": "string", "description": "Ветка для фильтрации (ОБЯЗАТЕЛЬНО указывать конкретную ветку из списка доступных веток репозитория)"},
+                "limit": {"type": "integer", "description": "Максимальное количество результатов"}
             },
-            "required": ["query", "repo", "limit"]
+            "required": ["query", "repo", "branch", "limit"]
         }
     },
     {
@@ -126,11 +127,11 @@ TOOLS_SCHEMA = [
             "type": "object",
             "properties": {
                 "mode": {"type": "string", "description": "Режим: definitions, references, callers, callees"},
-                "symbol": {"type": "string", "description": "Имя символа (пустая строка \"\" если не используется)"},
-                "doc_id": {"type": "string", "description": "ID документа (пустая строка \"\" если не используется)"},
-                "line": {"type": "integer", "description": "Номер строки (стандартное значение: 0 если не используется)"}
+                "symbol": {"type": "string", "description": "Имя символа"},
+                "repo": {"type": "string", "description": "Название репозитория (пустая строка если не фильтруем)"},
+                "branch": {"type": "string", "description": "Ветка для фильтрации (ОБЯЗАТЕЛЬНО указывать конкретную ветку из списка доступных веток репозитория)"}
             },
-            "required": ["mode", "symbol", "doc_id", "line"]
+            "required": ["mode", "symbol", "repo", "branch"]
         }
     },
     {
@@ -139,12 +140,12 @@ TOOLS_SCHEMA = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "doc_id": {"type": "string", "description": "ID документа"},
+                "rel_path": {"type": "string", "description": "Относительный путь к файлу (например: backend/src/main.py)"},
                 "start_line": {"type": "integer", "description": "Начальная строка"},
                 "end_line": {"type": "integer", "description": "Конечная строка"},
                 "branch": {"type": "string", "description": "Ветка (ОБЯЗАТЕЛЬНО указывать конкретную ветку из списка доступных веток репозитория)"}
             },
-            "required": ["doc_id", "start_line", "end_line", "branch"]
+            "required": ["rel_path", "start_line", "end_line", "branch"]
         }
     }
 ]
