@@ -5,8 +5,8 @@ from utils import REPOS_ROOT, to_posix
 from sourcegraph import sg_search, sg_codeintel, sg_blob
 
 
-def main_search(question: str, path_prefix: str) -> str:
-    nodes = retrieve_fusion_nodes(question, path_prefix)
+def main_search(question: str, path_prefix: str = "", rev: str = "") -> str:
+    nodes = retrieve_fusion_nodes(question, path_prefix, rev)
     results = []
     for node in nodes:
         doc_id = node.metadata['doc_id']
@@ -53,9 +53,10 @@ TOOLS_SCHEMA = [
             "type": "object",
             "properties": {
                 "question": {"type": "string", "description": "Поисковый запрос"},
-                "path_prefix": {"type": "string", "description": "Префикс пути"}
+                "path_prefix": {"type": "string", "description": "Префикс пути"},
+                "rev": {"type": "string", "description": "Ветка/коммит для фильтрации (ОБЯЗАТЕЛЬНО указывать конкретную ветку из списка доступных веток репозитория)"}
             },
-            "required": ["question"]
+            "required": ["question", "rev"]
         }
     },
     {

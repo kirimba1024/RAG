@@ -114,16 +114,18 @@ def sg_blob(doc_id: str, start_line: int, end_line: int) -> str:
     return "\n".join(out)
 
 
-def sg_get_file_content(repo: str, path: str) -> str:
+def sg_get_file_content(repo: str, path: str, rev: str = "HEAD") -> str:
     gql_query = """
     query BlobContent($repo: String!, $path: String!, $rev: String!) {
       repository(name: $repo) { commit(rev: $rev) { file(path: $path) { content binary } } }
     }
     """
-    result = _execute_graphql(gql_query, {"repo": repo, "path": path, "rev": "HEAD"})
+    result = _execute_graphql(gql_query, {"repo": repo, "path": path, "rev": rev})
     file_data = result["data"]["repository"]["commit"]["file"]
-    if not file_data or file_data.get("binary"):
+    if not file_data:
         return ""
+    if file_data.get("binary"):
+        return None
     return file_data.get("content", "")
 
 
@@ -136,6 +138,56 @@ def sg_list_repos(prefix: str = "") -> list[str]:
     return [n for n in names if n.startswith(prefix)] if prefix else names
 
 
+def sg_get_repo_rev(repo: str) -> str:
+    gql = """
+    query RepoRev($repo: String!) {
+      repository(name: $repo) {
+        defaultBranch { name }
+        commit(rev: "HEAD") { oid }
+      }
+    }
+    """
+    data = _execute_graphql(gql, {"repo": repo})["data"]["repository"]
+    default_branch = data.get("defaultBranch", {}).get("name")
+    if default_branch:
+        return default_branch
+    commit_oid = data.get("commit", {}).get("oid")
+    if commit_oid:
+        return commit_oid[:12]
+    return "HEAD"
+
+def get_all_repos_branches() -> dict[str, list[str]]:
+    repos = sg_list_repos(prefix="")
+    result = {}
+    for repo in repos:
+        gql = """
+        query RepoBranches($repo: String!) {
+          repository(name: $repo) {
+            branches(first: 100) {
+              nodes { name }
+            }
+          }
+        }
+        """
+        data = _execute_graphql(gql, {"repo": repo})["data"]["repository"]
+        branches = data.get("branches", {}).get("nodes", [])
+        branch_names = [b["name"] for b in branches if b.get("name")]
+        if branch_names:
+            result[repo] = branch_names
+    return result
+
+def get_all_repos_branches_formatted() -> str:
+    branches_dict = get_all_repos_branches()
+    if not branches_dict:
+        return ""
+    lines = ["## Доступные ветки репозиториев:\n"]
+    for repo, branches in sorted(branches_dict.items()):
+        branches_str = ", ".join(branches[:10])
+        if len(branches) > 10:
+            branches_str += f" (+{len(branches)-10} еще)"
+        lines.append(f"- **{repo}**: {branches_str}")
+    return "\n".join(lines) + "\n"
+
 def sg_list_repo_files(repo: str, limit: int = 5000) -> list[str]:
     gql = """
     query RepoFiles($query: String!, $limit: Int!) {
@@ -147,11 +199,11 @@ def sg_list_repo_files(repo: str, limit: int = 5000) -> list[str]:
     return [r["file"]["path"] for r in results if r.get("file")]
 
 
-def sg_file_chunks(repo: str, path: str, min_lines: int = 100, max_lines: int = 120) -> list[dict]:
+def sg_file_chunks(repo: str, path: str, rev: str = "HEAD", min_lines: int = 100, max_lines: int = 120) -> list[dict]:
     gql = """
-    query FileSymbols($repo: String!, $path: String!) {
+    query FileSymbols($repo: String!, $path: String!, $rev: String!) {
       repository(name: $repo) {
-        commit(rev: "HEAD") {
+        commit(rev: $rev) {
           file(path: $path) {
             symbols(first: 2000) {
               nodes {
@@ -166,7 +218,7 @@ def sg_file_chunks(repo: str, path: str, min_lines: int = 100, max_lines: int = 
       }
     }
     """
-    data = _execute_graphql(gql, {"repo": repo, "path": path})
+    data = _execute_graphql(gql, {"repo": repo, "path": path, "rev": rev})
     file_obj = data["data"]["repository"]["commit"]["file"]
     content = file_obj.get("content", "")
     symbols = (file_obj.get("symbols", {}) or {}).get("nodes", [])

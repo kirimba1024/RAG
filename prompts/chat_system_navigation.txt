@@ -20,3 +20,5 @@
 - data/ - данные Elasticsearch и Neo4j
 - knowledge/ - исходный код для анализа
 - logs/ - логи работы системы
+
+{BRANCHES_INFO}

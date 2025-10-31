@@ -13,17 +13,19 @@ from tools import (
     architecture_stats,
     execute_command,
 )
-from sourcegraph import sg_search, sg_codeintel, sg_blob
+from sourcegraph import sg_search, sg_codeintel, sg_blob, get_all_repos_branches_formatted
 
 logger = setup_logging(Path(__file__).stem)
 
 BASE_LLM = Anthropic(api_key=ANTHROPIC_API_KEY)
-NAVIGATION = load_prompt("prompts/chat_system_navigation.txt")
+
+NAVIGATION_TEMPLATE = load_prompt("prompts/chat_system_navigation.txt")
+NAVIGATION = NAVIGATION_TEMPLATE.format(BRANCHES_INFO=get_all_repos_branches_formatted())
 CHAT_GATHER = load_prompt("prompts/chat_system_gather.txt")
 CHAT_ANSWER = load_prompt("prompts/chat_system_answer.txt")
 CACHE_BLOCK = {"cache_control": {"type": "ephemeral"}}
 TOOLS_MAP = {
-    "main_search": lambda p: main_search(p["question"], p.get("path_prefix", "")),
+    "main_search": lambda p: main_search(p["question"], p.get("path_prefix", ""), p.get("rev")),
     "code_stats": lambda p: code_stats(p.get("path_prefix", "")),
     "architecture_stats": lambda p: architecture_stats(p.get("path_prefix", "")),
     "execute_command": lambda p: execute_command(p["command"]),

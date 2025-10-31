@@ -10,6 +10,7 @@ from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.postprocessor.sbert_rerank import SentenceTransformerRerank
 
 from utils import ES_URL, ES_INDEX, EMBED_MODEL, RERANK_MODEL, setup_logging
+from sourcegraph import sg_get_repo_rev
 
 logger = setup_logging(Path(__file__).stem)
 
@@ -25,15 +26,21 @@ def normal_prefix(id_prefix):
 
 
 class HybridESRetriever(BaseRetriever):
-    def __init__(self, es, index, top_k=20, path_prefix: str = ""):
+    def __init__(self, es, index, top_k=20, path_prefix: str = "", rev: str = None):
         super().__init__()
         self.es = es
         self.index = index
         self.top_k = top_k
         self.path_prefix = normal_prefix(path_prefix)
+        self.rev = rev
 
     def _retrieve(self, query_bundle: QueryBundle) -> List[NodeWithScore]:
         query_embedding = Settings.embed_model.get_text_embedding(query_bundle.query_str)
+        filters = []
+        if self.path_prefix:
+            filters.append({"prefix": {"doc_id": self.path_prefix}})
+        if self.rev:
+            filters.append({"term": {"metadata.rev": self.rev}})
         body = {
             "size": self.top_k,
             "knn": {
@@ -55,9 +62,10 @@ class HybridESRetriever(BaseRetriever):
                 }
             }
         }
-        if self.path_prefix:
-            body["query"]["bool"]["filter"] = [{"prefix": {"doc_id": self.path_prefix}}]
-            body["knn"]["filter"] = {"prefix": {"doc_id": self.path_prefix}}
+        if filters:
+            body["query"]["bool"]["filter"] = filters
+            knn_filter = {"bool": {"must": filters}}
+            body["knn"]["filter"] = knn_filter
         response = self.es.search(
             index=self.index,
             knn=body["knn"],
@@ -75,10 +83,24 @@ class HybridESRetriever(BaseRetriever):
         return nodes
 
 
-def retrieve_fusion_nodes(question: str, path_prefix: str = "") -> List[BaseNode]:
-    retriever = HybridESRetriever(es=ES, index=ES_INDEX, top_k=30, path_prefix=path_prefix)
+def retrieve_fusion_nodes(question: str, path_prefix: str = "", rev: str = "") -> List[BaseNode]:
+    if not rev:
+        repo_name = path_prefix.split("/")[0] if path_prefix else None
+        if not repo_name:
+            repos = ES.search(
+                index=ES_INDEX,
+                body={"size": 0, "aggs": {"repos": {"terms": {"field": "doc_id.keyword", "size": 1}}}},
+                request_timeout=10
+            )
+            buckets = repos.get("aggregations", {}).get("repos", {}).get("buckets", [])
+            if buckets:
+                first_doc_id = buckets[0]["key"]
+                repo_name = first_doc_id.split("/")[0]
+        if repo_name:
+            rev = sg_get_repo_rev(repo_name)
+    retriever = HybridESRetriever(es=ES, index=ES_INDEX, top_k=30, path_prefix=path_prefix, rev=rev if rev else None)
     candidates = retriever.retrieve(question)
-    logger.info(f"🔍 Retriever вернул {len(candidates)} чанков (query: '{question[:50]}...')")
+    logger.info(f"🔍 Retriever вернул {len(candidates)} чанков (query: '{question[:50]}...', rev={rev or 'all'})")
     qb = QueryBundle(query_str=question)
     reranked = RERANKER.postprocess_nodes(candidates, query_bundle=qb)
     logger.info(f"⭐ Reranker отобрал {len(reranked)} чанков из {len(candidates)}")

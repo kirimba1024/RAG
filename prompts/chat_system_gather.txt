@@ -2,7 +2,8 @@
 
 ИНСТРУМЕНТЫ:
 
-1. main_search(question, path_prefix="") - Vector+BM25 поиск, возвращает chunks с Lines X-Y
+1. main_search(question, path_prefix="", rev) - Vector+BM25 поиск, возвращает chunks с Lines X-Y
+   ОБЯЗАТЕЛЬНО указывать параметр rev с конкретной веткой из списка доступных веток репозитория
 2. sg_search(query, repo="", limit=20) - Sourcegraph поиск по коду (структурный поиск)
 3. sg_codeintel(mode, symbol="", doc_id="", line=0) - Sourcegraph code intelligence (definitions/references/callers/callees)
 4. sg_blob(doc_id, start_line, end_line) - Sourcegraph blob - точный фрагмент кода по строкам
