@@ -26,13 +26,13 @@ CHAT_GATHER = load_prompt("prompts/chat_system_gather.txt")
 CHAT_ANSWER = load_prompt("prompts/chat_system_answer.txt")
 CACHE_BLOCK = {"cache_control": {"type": "ephemeral"}}
 TOOLS_MAP = {
-    "main_search": lambda p: main_search(p["question"], p["path_prefix"], p["rev"], p["top_n"]),
+    "main_search": lambda p: main_search(p["question"], p["path_prefix"], p["branch"], p["top_n"]),
     "code_stats": lambda p: code_stats(p["path_prefix"]),
     "architecture_stats": lambda p: architecture_stats(p["path_prefix"]),
     "execute_command": lambda p: execute_command(p["command"]),
     "sg_search": lambda p: sg_search(p["query"], p["repo"], p["limit"]),
     "sg_codeintel": lambda p: sg_codeintel(p["mode"], p["symbol"], p["doc_id"], p["line"]),
-    "sg_blob": lambda p: sg_blob(p["doc_id"], p["start_line"], p["end_line"]),
+    "sg_blob": lambda p: sg_blob(p["doc_id"], p["start_line"], p["end_line"], p["branch"]),
     "graphrag_query": lambda p: graphrag_query(p["task"], p["root"], p["k"]),
 }
 

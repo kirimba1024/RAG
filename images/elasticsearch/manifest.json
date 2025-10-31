@@ -11,7 +11,7 @@
       "hash": {
         "type": "keyword"
       },
-      "rev": {
+      "branch": {
         "type": "keyword"
       },
       "updated_at": {

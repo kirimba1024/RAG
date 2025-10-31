@@ -10,7 +10,6 @@ from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.postprocessor.sbert_rerank import SentenceTransformerRerank
 
 from utils import ES_URL, ES_INDEX, EMBED_MODEL, RERANK_MODEL, setup_logging
-from sourcegraph import sg_get_repo_rev
 
 logger = setup_logging(Path(__file__).stem)
 
@@ -26,20 +25,20 @@ def normal_prefix(id_prefix):
 
 
 class HybridESRetriever(BaseRetriever):
-    def __init__(self, es, index, path_prefix: str, rev: str, top_k=20):
+    def __init__(self, es, index, path_prefix: str, branch: str, top_k=20):
         super().__init__()
         self.es = es
         self.index = index
         self.top_k = top_k
         self.path_prefix = normal_prefix(path_prefix)
-        self.rev = rev
+        self.branch = branch
 
     def _retrieve(self, query_bundle: QueryBundle) -> List[NodeWithScore]:
         query_embedding = Settings.embed_model.get_text_embedding(query_bundle.query_str)
         filters = []
         if self.path_prefix:
             filters.append({"prefix": {"doc_id": self.path_prefix}})
-        filters.append({"term": {"metadata.rev": self.rev}})
+        filters.append({"term": {"metadata.branch": self.branch}})
         body = {
             "size": self.top_k,
             "knn": {
@@ -82,10 +81,10 @@ class HybridESRetriever(BaseRetriever):
         return nodes
 
 
-def retrieve_fusion_nodes(question: str, path_prefix: str, rev: str, top_n: int) -> List[BaseNode]:
-    retriever = HybridESRetriever(es=ES, index=ES_INDEX, path_prefix=path_prefix, rev=rev, top_k=top_n * 3)
+def retrieve_fusion_nodes(question: str, path_prefix: str, branch: str, top_n: int) -> List[BaseNode]:
+    retriever = HybridESRetriever(es=ES, index=ES_INDEX, path_prefix=path_prefix, branch=branch, top_k=top_n * 3)
     candidates = retriever.retrieve(question)
-    logger.info(f"🔍 Retriever вернул {len(candidates)} чанков (query: '{question[:50]}...', rev={rev or 'all'})")
+    logger.info(f"🔍 Retriever вернул {len(candidates)} чанков (query: '{question[:50]}...', branch={branch or 'all'})")
     qb = QueryBundle(query_str=question)
     RERANKER.top_n = top_n
     reranked = RERANKER.postprocess_nodes(candidates, query_bundle=qb)

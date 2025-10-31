@@ -6,8 +6,8 @@ from retriever import retrieve_fusion_nodes, get_code_stats, get_architecture_st
 from utils import REPOS_ROOT, to_posix
 
 
-def main_search(question: str, path_prefix: str, rev: str, top_n: int) -> str:
-    nodes = retrieve_fusion_nodes(question, path_prefix, rev, top_n)
+def main_search(question: str, path_prefix: str, branch: str, top_n: int) -> str:
+    nodes = retrieve_fusion_nodes(question, path_prefix, branch, top_n)
     results = []
     for node in nodes:
         doc_id = node.metadata['doc_id']
@@ -54,10 +54,10 @@ TOOLS_SCHEMA = [
             "properties": {
                 "question": {"type": "string", "description": "Поисковый запрос"},
                 "path_prefix": {"type": "string", "description": "Префикс пути (пустая строка если не фильтруем)"},
-                "rev": {"type": "string", "description": "Ветка/коммит для фильтрации (ОБЯЗАТЕЛЬНО указывать конкретную ветку из списка доступных веток репозитория)"},
+                "branch": {"type": "string", "description": "Ветка для фильтрации (ОБЯЗАТЕЛЬНО указывать конкретную ветку из списка доступных веток репозитория)"},
                 "top_n": {"type": "integer", "minimum": 1, "maximum": 30, "description": "Количество результатов после reranking (диапазон 1-30, стандартное значение: 10)"}
             },
-            "required": ["question", "path_prefix", "rev", "top_n"]
+            "required": ["question", "path_prefix", "branch", "top_n"]
         }
     },
     {
@@ -141,9 +141,10 @@ TOOLS_SCHEMA = [
             "properties": {
                 "doc_id": {"type": "string", "description": "ID документа"},
                 "start_line": {"type": "integer", "description": "Начальная строка"},
-                "end_line": {"type": "integer", "description": "Конечная строка"}
+                "end_line": {"type": "integer", "description": "Конечная строка"},
+                "branch": {"type": "string", "description": "Ветка (ОБЯЗАТЕЛЬНО указывать конкретную ветку из списка доступных веток репозитория)"}
             },
-            "required": ["doc_id", "start_line", "end_line"]
+            "required": ["doc_id", "start_line", "end_line", "branch"]
         }
     }
 ]

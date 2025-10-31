@@ -22,25 +22,25 @@ ES = Elasticsearch(ES_URL, request_timeout=30, max_retries=3, retry_on_timeout=T
 
 Settings.embed_model = HuggingFaceEmbedding(EMBED_MODEL, normalize=True)
 
-def upsert_manifest(rel_path, new_hash, rev):
-    manifest_id = f"{rel_path}#{rev}"
+def upsert_manifest(rel_path, new_hash, branch):
+    manifest_id = f"{rel_path}#{branch}"
     ES.index(
         index=ES_MANIFEST_INDEX,
         id=manifest_id,
         document={
             "path": rel_path,
             "hash": new_hash,
-            "rev": rev,
+            "branch": branch,
             "updated_at": datetime.now(UTC).isoformat()
         }
     )
 
-def delete_manifest(rel_path, rev):
-    manifest_id = f"{rel_path}#{rev}"
+def delete_manifest(rel_path, branch):
+    manifest_id = f"{rel_path}#{branch}"
     ES.delete(index=ES_MANIFEST_INDEX, id=manifest_id)
 
-def delete_chunks(rel_path, rev):
-    query = {"bool": {"must": [{"term": {"doc_id": rel_path}}, {"term": {"metadata.rev": rev}}]}}
+def delete_chunks(rel_path, branch):
+    query = {"bool": {"must": [{"term": {"doc_id": rel_path}}, {"term": {"metadata.branch": branch}}]}}
     ES.options(request_timeout=120).delete_by_query(
         index=ES_INDEX,
         body={"query": query},
@@ -49,13 +49,13 @@ def delete_chunks(rel_path, rev):
         allow_no_indices=True
     )
 
-def delete_file(rel_path, rev):
+def delete_file(rel_path, branch):
     t0 = time.time()
-    delete_chunks(rel_path, rev)
-    delete_manifest(rel_path, rev)
-    logger.info(f"🗑️ Deleted {rel_path} (rev={rev}) in {time.time()-t0:.2f}s")
+    delete_chunks(rel_path, branch)
+    delete_manifest(rel_path, branch)
+    logger.info(f"🗑️ Deleted {rel_path} (branch={branch}) in {time.time()-t0:.2f}s")
 
-def chunks_to_actions(chunks: list[dict], rel_path: str, rev: str) -> list[dict]:
+def chunks_to_actions(chunks: list[dict], rel_path: str, branch: str) -> list[dict]:
     total = len(chunks)
     actions = []
     for i, chunk in enumerate(chunks, start=1):
@@ -76,19 +76,19 @@ def chunks_to_actions(chunks: list[dict], rel_path: str, rev: str) -> list[dict]
                 "kind": chunk["kind"],
                 "chunk_id": i,
                 "chunk_total": total,
-                "rev": rev,
+                "branch": branch,
             },
         })
     return actions
 
-def add_file(rel_path, new_hash, rev):
+def add_file(rel_path, new_hash, branch):
     t0 = time.time()
-    chunks = get_file_chunks(rel_path, rev)
+    chunks = get_file_chunks(rel_path, branch)
     if chunks:
-        actions = chunks_to_actions(chunks, rel_path, rev)
+        actions = chunks_to_actions(chunks, rel_path, branch)
         helpers.bulk(ES.options(request_timeout=120), actions, chunk_size=2000, raise_on_error=True)
-        logger.info(f"➕ Added {rel_path} ({len(chunks)} chunks, rev={rev}) in {time.time()-t0:.2f}s")
-    upsert_manifest(rel_path, new_hash, rev)
+        logger.info(f"➕ Added {rel_path} ({len(chunks)} chunks, branch={branch}) in {time.time()-t0:.2f}s")
+    upsert_manifest(rel_path, new_hash, branch)
 
 def process_files():
     manifest_response = ES.search(
@@ -96,11 +96,11 @@ def process_files():
         body={
             "query": {"match_all": {}},
             "size": 10000,
-            "_source": ["path", "rev", "hash"]
+            "_source": ["path", "branch", "hash"]
         }
     )
     manifest_hash_by_file = {
-        (hit["_source"]["path"], hit["_source"].get("rev")): hit["_source"].get("hash")
+        (hit["_source"]["path"], hit["_source"].get("branch")): hit["_source"].get("hash")
         for hit in manifest_response["hits"]["hits"]
     }
     repos = sg_list_repos(prefix="")
@@ -113,7 +113,7 @@ def process_files():
                 processed_keys.add(key)
                 stored_hash = manifest_hash_by_file.get(key)
                 if current_hash == stored_hash and current_hash is not None:
-                    logger.debug(f"⏭️  Skipped {rel_path} (unchanged, rev={branch})")
+                    logger.debug(f"⏭️  Skipped {rel_path} (unchanged, branch={branch})")
                     continue
                 if is_ignored(Path(rel_path)) or not current_hash:
                     if stored_hash:
@@ -123,9 +123,9 @@ def process_files():
                 if stored_hash and stored_hash != current_hash:
                     delete_chunks(rel_path, branch)
                 add_file(rel_path, current_hash, branch)
-    for rel_path, rev in set(manifest_hash_by_file.keys()) - processed_keys:
-        delete_chunks(rel_path, rev)
-        delete_manifest(rel_path, rev)
+    for rel_path, branch in set(manifest_hash_by_file.keys()) - processed_keys:
+        delete_chunks(rel_path, branch)
+        delete_manifest(rel_path, branch)
 
 def main():
     try:
