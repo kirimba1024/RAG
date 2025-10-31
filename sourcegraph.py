@@ -1,8 +1,9 @@
 """Sourcegraph инструменты для работы с кодом через GraphQL API"""
 
 import requests
-from utils import SOURCEGRAPH_URL, SOURCEGRAPH_TOKEN, setup_logging
 from pathlib import Path
+from utils import SOURCEGRAPH_URL, SOURCEGRAPH_TOKEN, setup_logging, clean_text
+from mask import mask_secrets, check_secrets_in_text
 
 logger = setup_logging(Path(__file__).stem)
 
@@ -12,6 +13,17 @@ HEADERS = {
     "Authorization": f"token {SOURCEGRAPH_TOKEN}" if SOURCEGRAPH_TOKEN else "",
 }
 
+BINARY_CHUNK_SIZE = 512
+
+import pytesseract
+from PIL import Image
+from io import BytesIO
+import fitz
+import pandas as pd
+from docx import Document as DocxDocument
+from pptx import Presentation
+from llama_index.readers.file import UnstructuredReader
+from llama_index.core import Document
 
 def _execute_graphql(query: str, variables: dict | None = None) -> dict:
     payload = {"query": query}
@@ -21,6 +33,131 @@ def _execute_graphql(query: str, variables: dict | None = None) -> dict:
     resp.raise_for_status()
     return resp.json()
 
+def _extract_binary_content(rel_path: str, rev: str):
+    parts = rel_path.split("/", 1)
+    if len(parts) < 2:
+        return None
+    repo, path = parts
+    raw_url = f"{SOURCEGRAPH_URL}/{repo}@{rev}/-/raw/{path}"
+    resp = requests.get(raw_url, headers=HEADERS, timeout=30)
+    resp.raise_for_status()
+    file_bytes = resp.content
+    if not file_bytes:
+        return None
+    ext = Path(rel_path).suffix.lower()
+    try:
+        if ext == ".pdf":
+            doc = fitz.open(stream=BytesIO(file_bytes), filetype="pdf")
+            text = "\n".join([page.get_text() for page in doc])
+            docs = [Document(text=text, metadata={"file_path": rel_path})]
+        elif ext == ".docx":
+            docx_doc = DocxDocument(BytesIO(file_bytes))
+            text = "\n".join([para.text for para in docx_doc.paragraphs])
+            docs = [Document(text=text, metadata={"file_path": rel_path})]
+        elif ext == ".pptx":
+            prs = Presentation(BytesIO(file_bytes))
+            text_parts = []
+            for slide in prs.slides:
+                for shape in slide.shapes:
+                    if hasattr(shape, "text"):
+                        text_parts.append(shape.text)
+            docs = [Document(text="\n".join(text_parts), metadata={"file_path": rel_path})]
+        elif ext in [".html", ".epub", ".rtf"]:
+            reader = UnstructuredReader()
+            docs = reader.load_data(file=BytesIO(file_bytes))
+        elif ext == ".csv":
+            df = pd.read_csv(BytesIO(file_bytes))
+            text = df.to_string(index=False)
+            docs = [Document(text=text, metadata={"file_path": rel_path})]
+        elif ext in [".xls", ".xlsx"]:
+            df = pd.read_excel(BytesIO(file_bytes))
+            text = df.to_string(index=False)
+            docs = [Document(text=text, metadata={"file_path": rel_path})]
+        elif ext in [".png", ".jpg", ".jpeg", ".tif", ".tiff", ".webp", ".bmp"]:
+            img = Image.open(BytesIO(file_bytes))
+            try:
+                txt = pytesseract.image_to_string(img, lang="rus+eng")
+            except Exception:
+                txt = pytesseract.image_to_string(img)
+            docs = [Document(text=txt or "", metadata={"file_path": rel_path})]
+        else:
+            return None
+        if not docs or not docs[0].text:
+            return None
+        return "\n".join(doc.text for doc in docs if doc.text)
+    except Exception as e:
+        logger.warning(f"Failed to extract binary content from {rel_path}: {e}")
+        return None
+
+def _create_chunk(start_line: int, end_line: int, title: str, kind: str, text: str = None) -> dict:
+    chunk = {
+        "start_line": start_line,
+        "end_line": end_line,
+        "title": title,
+        "kind": kind,
+    }
+    if text is not None:
+        chunk["text"] = text
+    return chunk
+
+def _split_binary_content(content: str) -> list[dict]:
+    lines = content.split("\n")
+    chunks = []
+    current_start = 1
+    current_length = 0
+    for line_num, line in enumerate(lines, start=1):
+        line_length = len(line) + 1
+        if current_length + line_length > BINARY_CHUNK_SIZE and current_start < line_num:
+            chunks.append(_create_chunk(current_start, line_num - 1, "binary_content", "binary"))
+            current_start = line_num
+            current_length = line_length
+        else:
+            current_length += line_length
+    if current_start <= len(lines):
+        chunks.append(_create_chunk(current_start, len(lines), "binary_content", "binary"))
+    return chunks
+
+def sanitize_chunk(text: str) -> str:
+    masked = mask_secrets(text)
+    check_secrets_in_text(masked)
+    return masked
+
+def get_file_chunks(rel_path: str, rev: str) -> list[dict]:
+    content = sg_get_file_content(rel_path, rev)
+    if content is None:
+        return []
+    chunks_meta = sg_file_chunks(rel_path, rev)
+    if not chunks_meta:
+        content = clean_text(content)
+        chunks_meta = _split_binary_content(content)
+    lines = content.split("\n")
+    chunks = []
+    for ch in chunks_meta:
+        start = max(1, int(ch["start_line"]))
+        end = max(start, int(ch["end_line"]))
+        text = "\n".join(lines[start-1:end])
+        if text:
+            text = sanitize_chunk(text)
+            if text:
+                chunks.append(_create_chunk(start, end, ch.get("title", ""), ch.get("kind", ""), text))
+    return chunks
+
+def get_file_hash(rel_path: str, rev: str) -> str | None:
+    parts = rel_path.split("/", 1)
+    if len(parts) < 2:
+        return None
+    repo, path = parts
+    gql_query = """
+    query BlobOid($repo: String!, $path: String!, $rev: String!) {
+      repository(name: $repo) { commit(rev: $rev) { file(path: $path) { oid } } }
+    }
+    """
+    result = _execute_graphql(gql_query, {"repo": repo, "path": path, "rev": rev})
+    file_data = result["data"]["repository"]["commit"]["file"]
+    if not file_data:
+        return None
+    oid = file_data.get("oid")
+    return oid if oid else None
 
 def sg_search(query: str, repo: str, limit: int) -> str:
     repo_filter = f"repo:{repo}" if repo else ""
@@ -43,7 +180,6 @@ def sg_search(query: str, repo: str, limit: int) -> str:
         for lm in m.get("lineMatches", [])[:5]:
             out.append(f"  {lm.get('lineNumber','')}: {lm.get('preview','').strip()}")
     return "\n".join(out)
-
 
 def sg_codeintel(mode: str, symbol: str, doc_id: str, line: int) -> str:
     gql_query_map = {
@@ -88,7 +224,6 @@ def sg_codeintel(mode: str, symbol: str, doc_id: str, line: int) -> str:
         return "\n".join(out)
     return f"Обработан режим: {mode}"
 
-
 def sg_blob(doc_id: str, start_line: int, end_line: int) -> str:
     if not doc_id:
         return "Необходимо указать doc_id"
@@ -111,8 +246,11 @@ def sg_blob(doc_id: str, start_line: int, end_line: int) -> str:
         out.append(f"{i:4d} | {line}")
     return "\n".join(out)
 
-
-def sg_get_file_content(repo: str, path: str, rev: str = "HEAD") -> str:
+def sg_get_file_content(rel_path: str, rev: str = "HEAD") -> str | None:
+    parts = rel_path.split("/", 1)
+    if len(parts) < 2:
+        return None
+    repo, path = parts
     gql_query = """
     query BlobContent($repo: String!, $path: String!, $rev: String!) {
       repository(name: $repo) { commit(rev: $rev) { file(path: $path) { content binary } } }
@@ -121,11 +259,12 @@ def sg_get_file_content(repo: str, path: str, rev: str = "HEAD") -> str:
     result = _execute_graphql(gql_query, {"repo": repo, "path": path, "rev": rev})
     file_data = result["data"]["repository"]["commit"]["file"]
     if not file_data:
-        return ""
-    if file_data.get("binary"):
         return None
-    return file_data.get("content", "")
-
+    if file_data.get("binary"):
+        content = _extract_binary_content(rel_path, rev)
+        return content if content else None
+    content = file_data.get("content")
+    return content if content else None
 
 def sg_list_repos(prefix: str = "") -> list[str]:
     gql = """
@@ -135,8 +274,31 @@ def sg_list_repos(prefix: str = "") -> list[str]:
     names = [n["name"] for n in data if n.get("name")]
     return [n for n in names if n.startswith(prefix)] if prefix else names
 
+def sg_list_all_repo_files() -> set[str]:
+    files = set()
+    for repo_full_name in sg_list_repos(prefix=""):
+        for rel_path, _ in sg_list_repo_files(repo_full_name, "HEAD"):
+            files.add(rel_path)
+    return files
 
-def sg_get_repo_rev(repo: str) -> str:
+def sg_list_repo_branches(rel_path: str) -> list[str]:
+    parts = rel_path.split("/", 1)
+    repo = parts[0]
+    gql = """
+    query RepoBranches($repo: String!) {
+      repository(name: $repo) {
+        branches(first: 100) {
+          nodes { name }
+        }
+      }
+    }
+    """
+    data = _execute_graphql(gql, {"repo": repo})["data"]["repository"]
+    branches = data.get("branches", {}).get("nodes", [])
+    return [b["name"] for b in branches if b.get("name")]
+
+def sg_get_repo_rev(rel_path: str) -> str:
+    repo = rel_path.split("/")[0]
     gql = """
     query RepoRev($repo: String!) {
       repository(name: $repo) {
@@ -154,10 +316,12 @@ def sg_get_repo_rev(repo: str) -> str:
         return commit_oid[:12]
     return "HEAD"
 
-def get_all_repos_branches() -> dict[str, list[str]]:
+def get_all_repos_branches_formatted() -> str | None:
     repos = sg_list_repos(prefix="")
-    result = {}
-    for repo in repos:
+    if not repos:
+        return ""
+    lines = ["## Доступные ветки репозиториев:\n"]
+    for repo in sorted(repos):
         gql = """
         query RepoBranches($repo: String!) {
           repository(name: $repo) {
@@ -171,33 +335,43 @@ def get_all_repos_branches() -> dict[str, list[str]]:
         branches = data.get("branches", {}).get("nodes", [])
         branch_names = [b["name"] for b in branches if b.get("name")]
         if branch_names:
-            result[repo] = branch_names
-    return result
-
-def get_all_repos_branches_formatted() -> str:
-    branches_dict = get_all_repos_branches()
-    if not branches_dict:
+            branches_str = ", ".join(branch_names[:10])
+            if len(branch_names) > 10:
+                branches_str += f" (+{len(branch_names)-10} еще)"
+            lines.append(f"- **{repo}**: {branches_str}")
+    if len(lines) == 1:
         return ""
-    lines = ["## Доступные ветки репозиториев:\n"]
-    for repo, branches in sorted(branches_dict.items()):
-        branches_str = ", ".join(branches[:10])
-        if len(branches) > 10:
-            branches_str += f" (+{len(branches)-10} еще)"
-        lines.append(f"- **{repo}**: {branches_str}")
     return "\n".join(lines) + "\n"
 
-def sg_list_repo_files(repo: str, limit: int = 5000) -> list[str]:
+def sg_list_repo_files(rel_path: str, rev: str = "HEAD", limit: int = 5000) -> list[tuple[str, str | None]]:
+    parts = rel_path.split("/", 1)
+    if len(parts) == 2:
+        repo, file_path = parts
+        file_rel_path = f"{repo}/{file_path}"
+        oid = get_file_hash(file_rel_path, rev)
+        return [(file_rel_path, oid)]
+    repo = parts[0]
     gql = """
     query RepoFiles($query: String!, $limit: Int!) {
       search(query: $query, first: $limit) { results { results { ... on FileMatch { file { path } } } } }
     }
     """
-    q = f"repo:{repo} type:file"
+    q = f"repo:{repo}@{rev} type:file"
     results = _execute_graphql(gql, {"query": q, "limit": limit})["data"]["search"]["results"]["results"]
-    return [r["file"]["path"] for r in results if r.get("file")]
+    files = []
+    for r in results:
+        if r.get("file"):
+            file_path = r["file"]["path"]
+            file_rel_path = f"{repo}/{file_path}"
+            oid = get_file_hash(file_rel_path, rev)
+            files.append((file_rel_path, oid))
+    return files
 
-
-def sg_file_chunks(repo: str, path: str, rev: str = "HEAD", min_lines: int = 100, max_lines: int = 120) -> list[dict]:
+def sg_file_chunks(rel_path: str, rev: str = "HEAD", min_lines: int = 100, max_lines: int = 120) -> list[dict]:
+    parts = rel_path.split("/", 1)
+    if len(parts) < 2:
+        return []
+    repo, path = parts
     gql = """
     query FileSymbols($repo: String!, $path: String!, $rev: String!) {
       repository(name: $repo) {
@@ -230,14 +404,7 @@ def sg_file_chunks(repo: str, path: str, rev: str = "HEAD", min_lines: int = 100
                 start = 1
             if end < start:
                 end = start
-            chunks.append({
-                "repo": repo,
-                "path": path,
-                "title": s.get("name", ""),
-                "kind": s.get("kind", "symbol"),
-                "start_line": start,
-                "end_line": end,
-            })
+            chunks.append(_create_chunk(start, end, s.get("name", ""), s.get("kind", "symbol")))
         chunks.sort(key=lambda x: (x["start_line"], x["end_line"]))
         return chunks
     lines = content.split("\n")
@@ -250,13 +417,6 @@ def sg_file_chunks(repo: str, path: str, rev: str = "HEAD", min_lines: int = 100
     while i < n:
         start = i + 1
         end = min(i + size, n)
-        chunks.append({
-            "repo": repo,
-            "path": path,
-            "title": f"lines_{start}_{end}",
-            "kind": "lines",
-            "start_line": start,
-            "end_line": end,
-        })
+        chunks.append(_create_chunk(start, end, f"lines_{start}_{end}", "lines"))
         i = end
     return chunks

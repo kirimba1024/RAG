@@ -1,8 +1,9 @@
 import subprocess
+
 import docker
+
 from retriever import retrieve_fusion_nodes, get_code_stats, get_architecture_stats
 from utils import REPOS_ROOT, to_posix
-from sourcegraph import sg_search, sg_codeintel, sg_blob
 
 
 def main_search(question: str, path_prefix: str, rev: str, top_n: int) -> str:

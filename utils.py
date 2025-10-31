@@ -1,13 +1,14 @@
-import os
-from pathlib import Path
-import hashlib, base64
+import base64
+import hashlib
 import logging
+import os
 import re
 import unicodedata
-import requests
-import subprocess
+from pathlib import Path
+
 from dotenv import load_dotenv
 from pathspec import PathSpec
+
 from mask import SECRET_PATTERNS
 
 load_dotenv()
@@ -116,31 +117,3 @@ IGNORE_SPEC = PathSpec.from_lines("gitwildmatch", IGNORE_FILE.read_text(encoding
 
 def is_ignored(rel_path: Path) -> bool:
     return IGNORE_SPEC.match_file(to_posix(rel_path))
-
-EMOJI_MAP = [
-    (['private key', 'pem', 'pgp', 'certificate'], '🔐'),
-    (['password', 'passwd', 'pwd'], '🔑'),
-    (['token', 'bearer', 'jwt'], '🎫'),
-    (['api', 'key', 'secret'], '🗝️'),
-    (['jdbc', 'mongodb', 'postgres', 'mysql', 'redis'], '🗄️'),
-    (['aws', 'vault', 'keycloak'], '☁️'),
-]
-
-def classify_secret_type(pattern: str) -> str:
-    pattern_lower = pattern.lower()
-    for keywords, emoji in EMOJI_MAP:
-        if any(k in pattern_lower for k in keywords):
-            return emoji
-    return '⚠️'
-
-def check_secrets_in_text(text: str) -> list[dict]:
-    findings = []
-    for pat, _ in SECRET_PATTERNS:
-        for match in pat.finditer(text):
-            match_text = match.group(0)
-            findings.append({
-                'match': match_text if len(match_text) <= 120 else match_text[:120] + '...',
-                'line': text[:match.start()].count('\n') + 1,
-                'type': classify_secret_type(pat.pattern)
-            })
-    return findings

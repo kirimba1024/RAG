@@ -90,12 +90,12 @@ SECRET_PATTERNS = [
 ]
 
 EMOJI_MAP = [
-    (['PRIVATE KEY', 'CERTIFICATE'], '🔐'),
-    (['AWS', 'GITLAB', 'VAULT', 'JWT'], '🎫'),
-    (['password', 'passwd'], '🔑'),
-    (['token'], '🎟️'),
-    (['jdbc', 'redis', 'mongodb'], '🗄️'),
-    (['api', 'key'], '🗝️'),
+    (['private key', 'pem', 'pgp', 'certificate'], '🔐'),
+    (['password', 'passwd', 'pwd'], '🔑'),
+    (['token', 'bearer', 'jwt'], '🎫'),
+    (['api', 'key', 'secret'], '🗝️'),
+    (['jdbc', 'mongodb', 'postgres', 'mysql', 'redis'], '🗄️'),
+    (['aws', 'vault', 'keycloak'], '☁️'),
 ]
 
 
@@ -104,22 +104,37 @@ def get_emoji(pattern: str, replacement) -> str:
     text = (replacement if isinstance(replacement, str) else '') + pattern.lower()
     return next((emoji for keywords, emoji in EMOJI_MAP if any(k.lower() in text for k in keywords)), '🔒')
 
+def classify_secret_type(pattern: str) -> str:
+    pattern_lower = pattern.lower()
+    for keywords, emoji in EMOJI_MAP:
+        if any(k in pattern_lower for k in keywords):
+            return emoji
+    return '⚠️'
 
-def mask_secrets(text: str) -> tuple[str, list]:
-    """Маскирует секреты в тексте, возвращает (текст, список находок)."""
-    if not text:
-        return text, []
-    
-    # Собираем находки на оригинале
+def check_secrets_in_text(text: str) -> None:
+    for pat, _ in SECRET_PATTERNS:
+        for match in pat.finditer(text):
+            match_text = match.group(0)
+            line_num = text[:match.start()].count('\n') + 1
+            secret_type = classify_secret_type(pat.pattern)
+            display_text = match_text if len(match_text) <= 120 else match_text[:120] + '...'
+            
+            if "REDACTED" not in match_text:
+                logger.error(f"🔒 Найден секрет без REDACTED: {secret_type} line {line_num}: {display_text}")
+            else:
+                logger.info(f"🔒 {secret_type} line {line_num}: {display_text}")
+
+
+def mask_secrets(text: str) -> str:
     findings = [
-        (text[:m.start()].count('\n') + 1, get_emoji(pat.pattern, repl), 
+        (text[:m.start()].count('\n') + 1, get_emoji(pat.pattern, repl),
          m.group(0) if len(m.group(0)) <= 60 else m.group(0)[:57] + '...')
         for pat, repl in SECRET_PATTERNS
         for m in pat.finditer(text)
     ]
-    
-    # Применяем замены
+    if findings:
+        for line_num, emoji, match_text in findings:
+            logger.info(f"🔒 {emoji} line {line_num}: {match_text}")
     for pat, repl in SECRET_PATTERNS:
         text = pat.sub(repl, text)
-    
-    return text, findings
+    return text
