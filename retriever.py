@@ -25,20 +25,18 @@ def normal_prefix(id_prefix):
 
 
 class HybridESRetriever(BaseRetriever):
-    def __init__(self, es, index, path_prefix: str, branch: str, top_k=20):
+    def __init__(self, es, index, path_prefix: str, top_k=20):
         super().__init__()
         self.es = es
         self.index = index
         self.top_k = top_k
         self.path_prefix = normal_prefix(path_prefix)
-        self.branch = branch
 
     def _retrieve(self, query_bundle: QueryBundle) -> List[NodeWithScore]:
         query_embedding = Settings.embed_model.get_text_embedding(query_bundle.query_str)
         filters = []
         if self.path_prefix:
             filters.append({"prefix": {"doc_id": self.path_prefix}})
-        filters.append({"term": {"metadata.branch": self.branch}})
         body = {
             "size": self.top_k,
             "knn": {
@@ -81,10 +79,10 @@ class HybridESRetriever(BaseRetriever):
         return nodes
 
 
-def retrieve_fusion_nodes(question: str, path_prefix: str, branch: str, top_n: int) -> List[BaseNode]:
-    retriever = HybridESRetriever(es=ES, index=ES_INDEX, path_prefix=path_prefix, branch=branch, top_k=top_n * 3)
+def retrieve_fusion_nodes(question: str, path_prefix: str, top_n: int) -> List[BaseNode]:
+    retriever = HybridESRetriever(es=ES, index=ES_INDEX, path_prefix=path_prefix, top_k=top_n * 3)
     candidates = retriever.retrieve(question)
-    logger.info(f"🔍 Retriever вернул {len(candidates)} чанков (query: '{question[:50]}...', branch={branch or 'all'})")
+    logger.info(f"🔍 Retriever вернул {len(candidates)} чанков (query: '{question[:50]}...')")
     qb = QueryBundle(query_str=question)
     RERANKER.top_n = top_n
     reranked = RERANKER.postprocess_nodes(candidates, query_bundle=qb)
@@ -92,13 +90,9 @@ def retrieve_fusion_nodes(question: str, path_prefix: str, branch: str, top_n: i
     return [nws.node for nws in reranked]
 
 
-def get_code_stats(path_prefix: str = "", branch: str = "") -> str:
+def get_code_stats(path_prefix: str = "") -> str:
     """Базовая статистика кодовой базы"""
-    base_query = {"prefix": {"doc_id": path_prefix}} if path_prefix else {"match_all": {}}
-    if branch:
-        query_filter = {"bool": {"must": [base_query, {"term": {"metadata.branch": branch}}]}}
-    else:
-        query_filter = base_query
+    query_filter = {"prefix": {"doc_id": path_prefix}} if path_prefix else {"match_all": {}}
     query = {
         "size": 0,
         "query": query_filter,
@@ -149,13 +143,9 @@ def get_code_stats(path_prefix: str = "", branch: str = "") -> str:
     return "\n".join(results)
 
 
-def get_architecture_stats(path_prefix: str = "", branch: str = "") -> str:
+def get_architecture_stats(path_prefix: str = "") -> str:
     """Архитектурная статистика кодовой базы"""
-    base_query = {"prefix": {"doc_id": path_prefix}} if path_prefix else {"match_all": {}}
-    if branch:
-        query_filter = {"bool": {"must": [base_query, {"term": {"metadata.branch": branch}}]}}
-    else:
-        query_filter = base_query
+    query_filter = {"prefix": {"doc_id": path_prefix}} if path_prefix else {"match_all": {}}
     query = {
         "size": 0,
         "query": query_filter,

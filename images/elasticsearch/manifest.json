@@ -11,9 +11,6 @@
       "hash": {
         "type": "keyword"
       },
-      "branch": {
-        "type": "keyword"
-      },
       "updated_at": {
         "type": "date",
         "format": "strict_date_optional_time||epoch_millis"

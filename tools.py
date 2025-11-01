@@ -6,8 +6,8 @@ from retriever import retrieve_fusion_nodes, get_code_stats, get_architecture_st
 from utils import REPOS_ROOT, to_posix
 
 
-def main_search(question: str, path_prefix: str, branch: str, top_n: int) -> str:
-    nodes = retrieve_fusion_nodes(question, path_prefix, branch, top_n)
+def main_search(question: str, path_prefix: str, top_n: int) -> str:
+    nodes = retrieve_fusion_nodes(question, path_prefix, top_n)
     results = []
     for node in nodes:
         doc_id = node.metadata['doc_id']
@@ -17,11 +17,11 @@ def main_search(question: str, path_prefix: str, branch: str, top_n: int) -> str
         results.append(f"{header}:\n{node.text}")
     return "\n\n".join(results)
 
-def code_stats(path_prefix: str, branch: str) -> str:
-    return get_code_stats(path_prefix, branch)
+def code_stats(path_prefix: str) -> str:
+    return get_code_stats(path_prefix)
 
-def architecture_stats(path_prefix: str, branch: str) -> str:
-    return get_architecture_stats(path_prefix, branch)
+def architecture_stats(path_prefix: str) -> str:
+    return get_architecture_stats(path_prefix)
 
 def execute_command(command: str) -> str:
     client = docker.from_env()
@@ -54,10 +54,9 @@ TOOLS_SCHEMA = [
             "properties": {
                 "question": {"type": "string", "description": "Поисковый запрос"},
                 "path_prefix": {"type": "string", "description": "Префикс пути (пустая строка если не фильтруем)"},
-                "branch": {"type": "string", "description": "Ветка для фильтрации (ОБЯЗАТЕЛЬНО указывать конкретную ветку из списка доступных веток репозитория)"},
                 "top_n": {"type": "integer", "minimum": 1, "maximum": 30, "description": "Количество результатов после reranking (диапазон 1-30, стандартное значение: 10)"}
             },
-            "required": ["question", "path_prefix", "branch", "top_n"]
+            "required": ["question", "path_prefix", "top_n"]
         }
     },
     {
@@ -79,10 +78,9 @@ TOOLS_SCHEMA = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "path_prefix": {"type": "string", "description": "Префикс пути (пустая строка если не фильтруем)"},
-                "branch": {"type": "string", "description": "Ветка для фильтрации (ОБЯЗАТЕЛЬНО указывать конкретную ветку из списка доступных веток репозитория)"}
+                "path_prefix": {"type": "string", "description": "Префикс пути (пустая строка если не фильтруем)"}
             },
-            "required": ["path_prefix", "branch"]
+            "required": ["path_prefix"]
         }
     },
     {
@@ -91,10 +89,9 @@ TOOLS_SCHEMA = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "path_prefix": {"type": "string", "description": "Префикс пути (пустая строка если не фильтруем)"},
-                "branch": {"type": "string", "description": "Ветка для фильтрации (ОБЯЗАТЕЛЬНО указывать конкретную ветку из списка доступных веток репозитория)"}
+                "path_prefix": {"type": "string", "description": "Префикс пути (пустая строка если не фильтруем)"}
             },
-            "required": ["path_prefix", "branch"]
+            "required": ["path_prefix"]
         }
     },
     {
@@ -116,10 +113,9 @@ TOOLS_SCHEMA = [
             "properties": {
                 "query": {"type": "string", "description": "Поисковый запрос"},
                 "repo": {"type": "string", "description": "Название репозитория (пустая строка если не фильтруем)"},
-                "branch": {"type": "string", "description": "Ветка для фильтрации (ОБЯЗАТЕЛЬНО указывать конкретную ветку из списка доступных веток репозитория)"},
                 "limit": {"type": "integer", "description": "Максимальное количество результатов"}
             },
-            "required": ["query", "repo", "branch", "limit"]
+            "required": ["query", "repo", "limit"]
         }
     },
     {
@@ -130,10 +126,9 @@ TOOLS_SCHEMA = [
             "properties": {
                 "mode": {"type": "string", "description": "Режим: definitions, references, callers, callees"},
                 "symbol": {"type": "string", "description": "Имя символа"},
-                "repo": {"type": "string", "description": "Название репозитория (пустая строка если не фильтруем)"},
-                "branch": {"type": "string", "description": "Ветка для фильтрации (ОБЯЗАТЕЛЬНО указывать конкретную ветку из списка доступных веток репозитория)"}
+                "repo": {"type": "string", "description": "Название репозитория (пустая строка если не фильтруем)"}
             },
-            "required": ["mode", "symbol", "repo", "branch"]
+            "required": ["mode", "symbol", "repo"]
         }
     },
     {
@@ -144,10 +139,9 @@ TOOLS_SCHEMA = [
             "properties": {
                 "rel_path": {"type": "string", "description": "Относительный путь к файлу (например: backend/src/main.py)"},
                 "start_line": {"type": "integer", "description": "Начальная строка"},
-                "end_line": {"type": "integer", "description": "Конечная строка"},
-                "branch": {"type": "string", "description": "Ветка (ОБЯЗАТЕЛЬНО указывать конкретную ветку из списка доступных веток репозитория)"}
+                "end_line": {"type": "integer", "description": "Конечная строка"}
             },
-            "required": ["rel_path", "start_line", "end_line", "branch"]
+            "required": ["rel_path", "start_line", "end_line"]
         }
     }
 ]

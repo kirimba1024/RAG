@@ -20,5 +20,3 @@
 - data/ - данные Elasticsearch и Neo4j
 - repos/ - исходный код для анализа
 - logs/ - логи работы системы
-
-{BRANCHES_INFO}

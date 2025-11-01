@@ -38,9 +38,9 @@ def _split_file_path(rel_path: str) -> tuple[str, str]:
         raise ValueError(f"Invalid file path format: {rel_path}. Expected format: repo/path")
     return parts[0], parts[1]
 
-def _extract_binary_content(rel_path: str, branch: str):
+def _extract_binary_content(rel_path: str):
     repo, path = _split_file_path(rel_path)
-    raw_url = f"{SOURCEGRAPH_URL}/{repo}@{branch}/-/raw/{path}"
+    raw_url = f"{SOURCEGRAPH_URL}/{repo}@HEAD/-/raw/{path}"
     resp = requests.get(raw_url, headers=HEADERS, timeout=30)
     resp.raise_for_status()
     file_bytes = resp.content
@@ -116,7 +116,7 @@ def sanitize_chunk(text: str) -> str:
     check_secrets_in_text(text)
     return text
 
-def get_file_chunks(rel_path: str, branch: str) -> list[dict]:
+def get_file_chunks(rel_path: str) -> list[dict]:
     repo, path = _split_file_path(rel_path)
     gql = """
     query FileChunks($repo: String!, $path: String!, $rev: String!) {
@@ -137,10 +137,10 @@ def get_file_chunks(rel_path: str, branch: str) -> list[dict]:
       }
     }
     """
-    result = _execute_graphql(gql, {"repo": repo, "path": path, "rev": branch})
+    result = _execute_graphql(gql, {"repo": repo, "path": path, "rev": "HEAD"})
     file_data = result["data"]["repository"]["commit"]["file"]
     if file_data.get("binary"):
-        content = _extract_binary_content(rel_path, branch)
+        content = _extract_binary_content(rel_path)
         return custom_split(content, "binary")
     content = file_data.get("content")
     symbols = (file_data.get("symbols", {}) or {}).get("nodes", [])
@@ -148,19 +148,19 @@ def get_file_chunks(rel_path: str, branch: str) -> list[dict]:
         return _split_by_symbols(symbols, content)
     return custom_split(content, "text")
 
-def get_file_hash(rel_path: str, branch: str) -> str | None:
+def get_file_hash(rel_path: str) -> str | None:
     repo, path = _split_file_path(rel_path)
     gql_query = """
     query BlobOid($repo: String!, $path: String!, $rev: String!) {
       repository(name: $repo) { commit(rev: $rev) { file(path: $path) { oid } } }
     }
     """
-    result = _execute_graphql(gql_query, {"repo": repo, "path": path, "rev": branch})
+    result = _execute_graphql(gql_query, {"repo": repo, "path": path, "rev": "HEAD"})
     file_data = result["data"]["repository"]["commit"]["file"]
     return file_data.get("oid")
 
-def sg_search(query: str, repo: str, branch: str, limit: int) -> str:
-    repo_filter = f"repo:{repo}@{branch}" if repo else ""
+def sg_search(query: str, repo: str, limit: int) -> str:
+    repo_filter = f"repo:{repo}@HEAD" if repo else ""
     search_query = f"{repo_filter} {query}" if repo_filter else query
     gql_query = """
     query SearchResults($query: String!, $limit: Int!) {
@@ -181,8 +181,8 @@ def sg_search(query: str, repo: str, branch: str, limit: int) -> str:
             out.append(f"  {lm['lineNumber']}: {lm['preview'].strip()}")
     return "\n".join(out)
 
-def sg_codeintel(mode: str, symbol: str, repo: str, branch: str) -> str:
-    query_filter = f"repo:{repo}@{branch}" if repo else ""
+def sg_codeintel(mode: str, symbol: str, repo: str) -> str:
+    query_filter = f"repo:{repo}@HEAD" if repo else ""
     symbol_query = f"{query_filter} {symbol}".strip() if query_filter else symbol
     gql_query_map = {
         "definitions": """
@@ -224,14 +224,14 @@ def sg_codeintel(mode: str, symbol: str, repo: str, branch: str) -> str:
         return "\n".join(out)
     return f"Обработан режим: {mode}"
 
-def sg_blob(rel_path: str, start_line: int, end_line: int, branch: str) -> str:
+def sg_blob(rel_path: str, start_line: int, end_line: int) -> str:
     gql_query = """
     query BlobContent($repo: String!, $path: String!, $rev: String!) {
       repository(name: $repo) { commit(rev: $rev) { file(path: $path) { content binary } } }
     }
     """
     repo, file_path = rel_path.split("/", 1)
-    result = _execute_graphql(gql_query, {"repo": repo, "path": file_path, "rev": branch})
+    result = _execute_graphql(gql_query, {"repo": repo, "path": file_path, "rev": "HEAD"})
     file_data = result["data"]["repository"]["commit"]["file"]
     if file_data["binary"]:
         return f"Файл {rel_path} является бинарным"
@@ -251,56 +251,20 @@ def sg_list_repos(prefix: str) -> list[str]:
     names = [n["name"] for n in data]
     return [n for n in names if n.startswith(prefix)] if prefix else names
 
-def sg_list_repo_branches(repo: str) -> list[str]:
-    gql = """
-    query RepoBranches($repo: String!) {
-      repository(name: $repo) {
-        branches(first: 100) {
-          nodes { name }
-        }
-      }
-    }
-    """
-    data = _execute_graphql(gql, {"repo": repo})["data"]["repository"]
-    branches = data["branches"]["nodes"]
-    return [b["name"] for b in branches]
 
-def sg_get_repo_branch(repo: str) -> str:
-    repo_path = REPOS_ROOT / repo
-    if not repo_path.exists():
-        raise ValueError(f"Repository {repo} not found in {REPOS_ROOT}")
-    git_head = repo_path / ".git" / "HEAD"
-    if not git_head.exists():
-        raise ValueError(f"Repository {repo} is not a git repository")
-    head_content = git_head.read_text().strip()
-    if head_content.startswith("ref: refs/heads/"):
-        return head_content.replace("ref: refs/heads/", "")
-    raise ValueError(f"Repository {repo} is in detached HEAD state")
-
-def get_all_repos_branches_formatted() -> str | None:
-    repos = sg_list_repos(prefix="")
-    lines = ["## Доступные ветки репозиториев:\n"]
-    for repo in sorted(repos):
-        branch_names = sg_list_repo_branches(repo)
-        branches_str = ", ".join(branch_names[:10])
-        if len(branch_names) > 10:
-            branches_str += f" (+{len(branch_names)-10} еще)"
-        lines.append(f"- **{repo}**: {branches_str}")
-    return "\n".join(lines) + "\n"
-
-def sg_list_repo_files(repo: str, branch: str, limit: int = 5000) -> list[tuple[str, str | None]]:
+def sg_list_repo_files(repo: str, limit: int = 5000) -> list[tuple[str, str | None]]:
     gql = """
     query RepoFiles($query: String!, $limit: Int!) {
       search(query: $query, first: $limit) { results { results { ... on FileMatch { file { path } } } } }
     }
     """
-    q = f"repo:{repo}@{branch} type:file"
+    q = f"repo:{repo}@HEAD type:file"
     results = _execute_graphql(gql, {"query": q, "limit": limit})["data"]["search"]["results"]["results"]
     files = []
     for r in results:
         file_path = r["file"]["path"]
         file_rel_path = f"{repo}/{file_path}"
-        oid = get_file_hash(file_rel_path, branch)
+        oid = get_file_hash(file_rel_path)
         files.append((file_rel_path, oid))
     return files
 

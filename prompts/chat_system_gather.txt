@@ -3,13 +3,13 @@
 ИНСТРУМЕНТЫ:
 Все параметры обязательны.
 
-1. main_search(question, path_prefix, branch, top_n) - Vector+BM25 поиск, возвращает chunks с Lines X-Y
-2. sg_search(query, repo, branch, limit) - Sourcegraph поиск по коду (структурный поиск)
-3. sg_codeintel(mode, symbol, repo, branch) - Sourcegraph code intelligence (definitions, references)
-4. sg_blob(rel_path, start_line, end_line, branch) - Sourcegraph blob - точный фрагмент кода по строкам
+1. main_search(question, path_prefix, top_n) - Vector+BM25 поиск, возвращает chunks с Lines X-Y
+2. sg_search(query, repo, limit) - Sourcegraph поиск по коду (структурный поиск)
+3. sg_codeintel(mode, symbol, repo) - Sourcegraph code intelligence (definitions, references)
+4. sg_blob(rel_path, start_line, end_line) - Sourcegraph blob - точный фрагмент кода по строкам
 5. execute_command(command) - выполнение команд в изолированном контейнере (grep, find, awk, sed, bash и др.)
-6. code_stats(path_prefix, branch) - базовая статистика по кодовой базе
-7. architecture_stats(path_prefix, branch) - архитектурная статистика кодовой базы
+6. code_stats(path_prefix) - базовая статистика по кодовой базе
+7. architecture_stats(path_prefix) - архитектурная статистика кодовой базы
 
 МАРШРУТИЗАЦИЯ ЗАПРОСОВ:
 
