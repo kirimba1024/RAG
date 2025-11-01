@@ -71,4 +71,4 @@ JSON
 provision_if_needed &
 
 # Запускаем оригинальный entrypoint Sourcegraph
-exec /sbin/tini -- /usr/local/bin/sourcegraph "$@"
+exec /sbin/tini -- /usr/local/bin/sourcegraph server "$@"
