@@ -26,6 +26,7 @@ services:
 
   sourcegraph:
     build: ./images/sourcegraph
+    platform: linux/amd64
     restart: unless-stopped
     environment:
       - SOURCEGRAPH_DB_PASSWORD=${SOURCEGRAPH_DB_PASSWORD:-password}
@@ -35,7 +36,7 @@ services:
       - SOURCEGRAPH_INITIAL_SITE_ADMIN_EMAIL=${SOURCEGRAPH_ADMIN_EMAIL:-admin@example.com}
       - PROVISION_REPOS=1
     ports:
-      - "${SOURCEGRAPH_PORT:-3080}:3080"
+      - "${SOURCEGRAPH_PORT:-3080}:7080"
     volumes:
       - ./data/sourcegraph:/var/opt/sourcegraph
       - ./repos:/var/opt/sourcegraph/repos:ro
