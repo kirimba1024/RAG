@@ -1,7 +1,6 @@
 import gradio as gr
 import json
 import time
-import html
 from pathlib import Path
 from anthropic import Anthropic
 
@@ -27,8 +26,8 @@ CHAT_ANSWER = load_prompt("prompts/chat_system_answer.txt")
 CACHE_BLOCK = {"cache_control": {"type": "ephemeral"}}
 TOOLS_MAP = {
     "main_search": lambda p: main_search(p["question"], p["path_prefix"], p["branch"], p["top_n"]),
-    "code_stats": lambda p: code_stats(p["path_prefix"]),
-    "architecture_stats": lambda p: architecture_stats(p["path_prefix"]),
+    "code_stats": lambda p: code_stats(p["path_prefix"], p["branch"]),
+    "architecture_stats": lambda p: architecture_stats(p["path_prefix"], p["branch"]),
     "execute_command": lambda p: execute_command(p["command"]),
     "sg_search": lambda p: sg_search(p["query"], p["repo"], p["branch"], p["limit"]),
     "sg_codeintel": lambda p: sg_codeintel(p["mode"], p["symbol"], p["repo"], p["branch"]),
@@ -83,7 +82,8 @@ def chat(message, history, summary):
                     accumulated_text += event.delta.text
                     yield history + [[message, accumulated_text]], summary, ""
                 elif event.delta.type == "input_json_delta":
-                    current_tool["input"] += event.delta.partial_json
+                    if current_tool:
+                        current_tool["input"] += event.delta.partial_json
             elif event.type == "content_block_stop":
                 if current_text:
                     assistant_content.append({"type": "text", "text": current_text})

@@ -17,11 +17,11 @@ def main_search(question: str, path_prefix: str, branch: str, top_n: int) -> str
         results.append(f"{header}:\n{node.text}")
     return "\n\n".join(results)
 
-def code_stats(path_prefix: str) -> str:
-    return get_code_stats(path_prefix)
+def code_stats(path_prefix: str, branch: str) -> str:
+    return get_code_stats(path_prefix, branch)
 
-def architecture_stats(path_prefix: str) -> str:
-    return get_architecture_stats(path_prefix)
+def architecture_stats(path_prefix: str, branch: str) -> str:
+    return get_architecture_stats(path_prefix, branch)
 
 def execute_command(command: str) -> str:
     client = docker.from_env()
@@ -79,9 +79,10 @@ TOOLS_SCHEMA = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "path_prefix": {"type": "string", "description": "Префикс пути (пустая строка если не фильтруем)"}
+                "path_prefix": {"type": "string", "description": "Префикс пути (пустая строка если не фильтруем)"},
+                "branch": {"type": "string", "description": "Ветка для фильтрации (ОБЯЗАТЕЛЬНО указывать конкретную ветку из списка доступных веток репозитория)"}
             },
-            "required": ["path_prefix"]
+            "required": ["path_prefix", "branch"]
         }
     },
     {
@@ -90,9 +91,10 @@ TOOLS_SCHEMA = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "path_prefix": {"type": "string", "description": "Префикс пути (пустая строка если не фильтруем)"}
+                "path_prefix": {"type": "string", "description": "Префикс пути (пустая строка если не фильтруем)"},
+                "branch": {"type": "string", "description": "Ветка для фильтрации (ОБЯЗАТЕЛЬНО указывать конкретную ветку из списка доступных веток репозитория)"}
             },
-            "required": ["path_prefix"]
+            "required": ["path_prefix", "branch"]
         }
     },
     {

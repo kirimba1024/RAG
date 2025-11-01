@@ -1,6 +1,6 @@
 from pathlib import Path
 import re
-from utils import setup_logging, REPOS_ROOT, to_posix
+from utils import setup_logging
 
 logger = setup_logging(Path(__file__).stem)
 

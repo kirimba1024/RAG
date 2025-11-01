@@ -92,27 +92,31 @@ def retrieve_fusion_nodes(question: str, path_prefix: str, branch: str, top_n: i
     return [nws.node for nws in reranked]
 
 
-def get_code_stats(path_prefix: str = "") -> str:
+def get_code_stats(path_prefix: str = "", branch: str = "") -> str:
     """Базовая статистика кодовой базы"""
+    base_query = {"prefix": {"doc_id": path_prefix}} if path_prefix else {"match_all": {}}
+    if branch:
+        query_filter = {"bool": {"must": [base_query, {"term": {"metadata.branch": branch}}]}}
+    else:
+        query_filter = base_query
     query = {
         "size": 0,
-        "query": {"prefix": {"doc_id": path_prefix}} if path_prefix else {"match_all": {}},
+        "query": query_filter,
         "aggs": {
             "files": {"cardinality": {"field": "doc_id.keyword"}},
             "chunks": {"value_count": {"field": "_id"}},
             "languages": {"terms": {"field": "language.keyword", "size": 10}},
             "top_files": {
                 "terms": {"field": "doc_id.keyword", "size": 10},
-                "aggs": {"chunk_count": {"value_count": {"field": "chunk_id"}}}
+                "aggs": {"chunk_count": {"value_count": {"field": "metadata.chunk_id"}}}
             },
-            "avg_chunk_size": {"avg": {"field": "end_line"}},
+            "avg_chunk_size": {"avg": {"field": "metadata.end_line"}},
             "largest_files": {
                 "terms": {"field": "doc_id.keyword", "size": 5},
-                "aggs": {"max_lines": {"max": {"field": "end_line"}}}
+                "aggs": {"max_lines": {"max": {"field": "metadata.end_line"}}}
             },
             "recent_files": {
                 "terms": {"field": "doc_id.keyword", "size": 5},
-                "aggs": {"latest_update": {"max": {"field": "updated_at"}}}
             },
             "file_extensions": {
                 "terms": {"field": "file_extension.keyword", "size": 10}
@@ -134,7 +138,6 @@ def get_code_stats(path_prefix: str = "") -> str:
         ("🌐 Языки:", aggs["languages"]["buckets"], lambda x: f"  {x['key']}: {x['doc_count']}"),
         ("📈 Топ файлов по чанкам:", aggs["top_files"]["buckets"], lambda x: f"  {x['key']}: {x['chunk_count']['value']} чанков"),
         ("📊 Самые большие файлы:", aggs["largest_files"]["buckets"], lambda x: f"  {x['key']}: {x['max_lines']['value']} строк"),
-        ("📅 Недавно измененные:", aggs["recent_files"]["buckets"], lambda x: f"  {x['key']}"),
         ("📁 По расширениям:", aggs["file_extensions"]["buckets"], lambda x: f"  .{x['key']}: {x['doc_count']} файлов")
     ]
     
@@ -146,11 +149,16 @@ def get_code_stats(path_prefix: str = "") -> str:
     return "\n".join(results)
 
 
-def get_architecture_stats(path_prefix: str = "") -> str:
+def get_architecture_stats(path_prefix: str = "", branch: str = "") -> str:
     """Архитектурная статистика кодовой базы"""
+    base_query = {"prefix": {"doc_id": path_prefix}} if path_prefix else {"match_all": {}}
+    if branch:
+        query_filter = {"bool": {"must": [base_query, {"term": {"metadata.branch": branch}}]}}
+    else:
+        query_filter = base_query
     query = {
         "size": 0,
-        "query": {"prefix": {"doc_id": path_prefix}} if path_prefix else {"match_all": {}},
+        "query": query_filter,
         "aggs": {
             "complexity_stats": {"stats": {"field": "complexity_score"}},
             "test_coverage": {"terms": {"field": "is_test_file", "size": 2}},

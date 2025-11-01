@@ -9,8 +9,6 @@ from pathlib import Path
 from dotenv import load_dotenv
 from pathspec import PathSpec
 
-from mask import SECRET_PATTERNS
-
 load_dotenv()
 
 def load_prompt(filepath):

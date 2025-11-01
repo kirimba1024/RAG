@@ -1,5 +1,4 @@
 import time
-import subprocess
 from pathlib import Path
 from datetime import datetime, UTC
 
@@ -9,10 +8,10 @@ from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 
 from utils import (
     ES_URL, ES_INDEX, ES_MANIFEST_INDEX,
-    EMBED_MODEL, setup_logging, is_ignored, to_posix
+    EMBED_MODEL, setup_logging, is_ignored
 )
 from sourcegraph import (
-    get_file_chunks, get_file_hash, sg_list_repos, sg_list_repo_files,
+    get_file_chunks, sg_list_repos, sg_list_repo_files,
     sg_list_repo_branches
 )
 
@@ -66,7 +65,6 @@ def chunks_to_actions(chunks: list[dict], rel_path: str, branch: str) -> list[di
                 "doc_id": rel_path,
                 "start_line": chunk["start_line"],
                 "end_line": chunk["end_line"],
-                "symbol": chunk["title"],
                 "kind": chunk["kind"],
                 "chunk_id": i,
                 "chunk_total": total,
@@ -93,7 +91,7 @@ def process_files():
         }
     )
     manifest_hash_by_file = {
-        (hit["_source"]["path"], hit["_source"].get("branch")): hit["_source"].get("hash")
+        (hit["_source"]["path"], hit["_source"]["branch"]): hit["_source"]["hash"]
         for hit in manifest_response["hits"]["hits"]
     }
     repos = sg_list_repos(prefix="")
@@ -112,19 +110,20 @@ def process_files():
                     if is_ignored(Path(rel_path)) or not current_hash:
                         if stored_hash:
                             delete_chunks(rel_path, branch)
-                            upsert_manifest(rel_path, None, branch)
+                            delete_manifest(rel_path, branch)
                         continue
                     if stored_hash and stored_hash != current_hash:
                         delete_chunks(rel_path, branch)
                     add_file(rel_path, current_hash, branch)
                 except Exception as e:
                     logger.error(f"Failed to process file {rel_path} (branch={branch}): {e}")
-    for rel_path, branch in set(manifest_hash_by_file.keys()) - processed_keys:
-        try:
-            delete_chunks(rel_path, branch)
-            delete_manifest(rel_path, branch)
-        except Exception as e:
-            logger.error(f"Failed to delete file {rel_path} (branch={branch}): {e}")
+    for rel_path, branch in manifest_hash_by_file.keys():
+        if (rel_path, branch) not in processed_keys:
+            try:
+                delete_chunks(rel_path, branch)
+                delete_manifest(rel_path, branch)
+            except Exception as e:
+                logger.error(f"Failed to delete file {rel_path} (branch={branch}): {e}")
 
 def main():
     try:
