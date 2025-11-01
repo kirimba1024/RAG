@@ -2,7 +2,7 @@ import subprocess
 
 import docker
 
-from retriever import retrieve_fusion_nodes, get_code_stats, get_architecture_stats
+from retriever import retrieve_fusion_nodes, get_code_stats
 from utils import REPOS_ROOT, to_posix
 
 
@@ -19,9 +19,6 @@ def main_search(question: str, path_prefix: str, top_n: int) -> str:
 
 def code_stats(path_prefix: str) -> str:
     return get_code_stats(path_prefix)
-
-def architecture_stats(path_prefix: str) -> str:
-    return get_architecture_stats(path_prefix)
 
 def execute_command(command: str) -> str:
     client = docker.from_env()
@@ -75,17 +72,6 @@ TOOLS_SCHEMA = [
     {
         "name": "code_stats",
         "description": "Базовая статистика по кодовой базе",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "path_prefix": {"type": "string", "description": "Префикс пути (пустая строка если не фильтруем)"}
-            },
-            "required": ["path_prefix"]
-        }
-    },
-    {
-        "name": "architecture_stats",
-        "description": "Архитектурная статистика кодовой базы",
         "input_schema": {
             "type": "object",
             "properties": {

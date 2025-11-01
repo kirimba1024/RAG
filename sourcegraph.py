@@ -1,10 +1,11 @@
 """Sourcegraph инструменты для работы с кодом через GraphQL API"""
 
-import os
-import requests
 from pathlib import Path
-from utils import SOURCEGRAPH_URL, SOURCEGRAPH_TOKEN, setup_logging, clean_text, REPOS_ROOT, file_hash, is_ignored, to_posix, extract_binary_content
+
+import requests
+
 from mask import mask_secrets, check_secrets_in_text
+from utils import SOURCEGRAPH_URL, SOURCEGRAPH_TOKEN, setup_logging, clean_text, extract_binary_content
 
 logger = setup_logging(Path(__file__).stem)
 

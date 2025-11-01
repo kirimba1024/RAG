@@ -99,7 +99,6 @@ def get_code_stats(path_prefix: str = "") -> str:
         "aggs": {
             "files": {"cardinality": {"field": "doc_id.keyword"}},
             "chunks": {"value_count": {"field": "_id"}},
-            "languages": {"terms": {"field": "language.keyword", "size": 10}},
             "top_files": {
                 "terms": {"field": "doc_id.keyword", "size": 10},
                 "aggs": {"chunk_count": {"value_count": {"field": "metadata.chunk_id"}}}
@@ -108,12 +107,6 @@ def get_code_stats(path_prefix: str = "") -> str:
             "largest_files": {
                 "terms": {"field": "doc_id.keyword", "size": 5},
                 "aggs": {"max_lines": {"max": {"field": "metadata.end_line"}}}
-            },
-            "recent_files": {
-                "terms": {"field": "doc_id.keyword", "size": 5},
-            },
-            "file_extensions": {
-                "terms": {"field": "file_extension.keyword", "size": 10}
             }
         }
     }
@@ -124,64 +117,14 @@ def get_code_stats(path_prefix: str = "") -> str:
         f"📁 Файлов: {aggs['files']['value']}",
         f"📄 Чанков: {aggs['chunks']['value']}",
         f"📏 Средний размер чанка: {aggs['avg_chunk_size']['value'] or 0:.0f} строк",
-        "",
-        "🌐 Языки:"
+        ""
     ])
-    # Добавляем все секции в цикле
     sections = [
-        ("🌐 Языки:", aggs["languages"]["buckets"], lambda x: f"  {x['key']}: {x['doc_count']}"),
         ("📈 Топ файлов по чанкам:", aggs["top_files"]["buckets"], lambda x: f"  {x['key']}: {x['chunk_count']['value']} чанков"),
-        ("📊 Самые большие файлы:", aggs["largest_files"]["buckets"], lambda x: f"  {x['key']}: {x['max_lines']['value']} строк"),
-        ("📁 По расширениям:", aggs["file_extensions"]["buckets"], lambda x: f"  .{x['key']}: {x['doc_count']} файлов")
+        ("📊 Самые большие файлы:", aggs["largest_files"]["buckets"], lambda x: f"  {x['key']}: {x['max_lines']['value']} строк")
     ]
-    
     for title, items, formatter in sections:
         results.extend(["", title])
         for item in items:
             results.append(formatter(item))
-    
-    return "\n".join(results)
-
-
-def get_architecture_stats(path_prefix: str = "") -> str:
-    """Архитектурная статистика кодовой базы"""
-    query_filter = {"prefix": {"doc_id": path_prefix}} if path_prefix else {"match_all": {}}
-    query = {
-        "size": 0,
-        "query": query_filter,
-        "aggs": {
-            "complexity_stats": {"stats": {"field": "complexity_score"}},
-            "test_coverage": {"terms": {"field": "is_test_file", "size": 2}},
-            "documentation_ratio": {"terms": {"field": "has_documentation", "size": 2}},
-            "architecture_layers": {"terms": {"field": "layer.keyword", "size": 10}},
-            "dependency_density": {"avg": {"field": "dependency_count"}},
-            "code_duplication": {"terms": {"field": "is_duplicate", "size": 2}}
-        }
-    }
-    response = ES.search(index=ES_INDEX, body=query)
-    aggs = response["aggregations"]
-    
-    results = [f"🏗️ Архитектурная статистика" + (f" ({path_prefix})" if path_prefix else "")]
-    
-    results.extend(["", "🧮 Сложность кода:"])
-    complexity = aggs["complexity_stats"]
-    results.append(f"  Средняя: {complexity['avg'] or 0:.1f}")
-    results.append(f"  Максимальная: {complexity['max'] or 0:.1f}")
-    
-    # Добавляем все секции в цикле
-    sections = [
-        ("🧪 Покрытие тестами:", aggs["test_coverage"]["buckets"], lambda x: f"  {'Тесты' if x['key'] else 'Основной код'}: {x['doc_count']} файлов"),
-        ("📚 Документация:", aggs["documentation_ratio"]["buckets"], lambda x: f"  {'С документацией' if x['key'] else 'Без документации'}: {x['doc_count']} файлов"),
-        ("🏗️ Архитектурные слои:", aggs["architecture_layers"]["buckets"], lambda x: f"  {x['key']}: {x['doc_count']} файлов"),
-        ("🔄 Дублирование кода:", aggs["code_duplication"]["buckets"], lambda x: f"  {'Дублированный' if x['key'] else 'Уникальный'}: {x['doc_count']} файлов")
-    ]
-    
-    for title, items, formatter in sections:
-        results.extend(["", title])
-        for item in items:
-            results.append(formatter(item))
-    
-    results.extend(["", "🔗 Плотность зависимостей:"])
-    results.append(f"  Средняя: {aggs['dependency_density']['value'] or 0:.1f} зависимостей на файл")
-    
     return "\n".join(results)

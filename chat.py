@@ -9,7 +9,6 @@ from tools import (
     TOOLS_SCHEMA,
     main_search,
     code_stats,
-    architecture_stats,
     execute_command,
     graphrag_query,
 )
@@ -26,7 +25,6 @@ CACHE_BLOCK = {"cache_control": {"type": "ephemeral"}}
 TOOLS_MAP = {
     "main_search": lambda p: main_search(p["question"], p["path_prefix"], p["top_n"]),
     "code_stats": lambda p: code_stats(p["path_prefix"]),
-    "architecture_stats": lambda p: architecture_stats(p["path_prefix"]),
     "execute_command": lambda p: execute_command(p["command"]),
     "sg_search": lambda p: sg_search(p["query"], p["path_prefix"], p["limit"]),
     "sg_codeintel": lambda p: sg_codeintel(p["mode"], p["symbol"], p["path_prefix"]),

@@ -89,7 +89,7 @@ def process_files():
             size=1000
         )
     }
-    repos = list_repos(prefix="")
+    repos = list_repos()
     processed_paths = set()
     for repo in repos:
         for rel_path, current_hash in list_repo_files(repo):
