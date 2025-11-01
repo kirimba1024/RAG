@@ -25,7 +25,9 @@ services:
       - elasticsearch
 
   sourcegraph:
-    build: ./images/sourcegraph
+    build:
+      context: .
+      dockerfile: ./images/sourcegraph/Dockerfile
     platform: linux/amd64
     restart: unless-stopped
     environment:
@@ -39,11 +41,10 @@ services:
       - "${SOURCEGRAPH_PORT:-3080}:7080"
     volumes:
       - ./data/sourcegraph:/var/opt/sourcegraph
-      - ./repos:/var/opt/sourcegraph/repos
 
   rag-sandbox:
-    build: ./images/sandbox
+    build:
+      context: .
+      dockerfile: ./images/sandbox/Dockerfile
     image: rag-sandbox:stable
-    volumes:
-      - ./repos:/app:ro
     restart: unless-stopped
