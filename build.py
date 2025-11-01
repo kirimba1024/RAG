@@ -8,10 +8,10 @@ from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 
 from utils import (
     ES_URL, ES_INDEX, ES_MANIFEST_INDEX,
-    EMBED_MODEL, setup_logging, is_ignored
+    EMBED_MODEL, list_repo_files, list_repos, setup_logging, is_ignored
 )
 from sourcegraph import (
-    get_file_chunks, sg_list_repos, sg_list_repo_files
+    get_file_chunks
 )
 
 logger = setup_logging(Path(__file__).stem)
@@ -32,7 +32,7 @@ def upsert_manifest(rel_path, new_hash):
     )
 
 def delete_manifest(rel_path):
-    ES.delete(index=ES_MANIFEST_INDEX, id=rel_path)
+    ES.delete(index=ES_MANIFEST_INDEX, id=rel_path, ignore=[404])
 
 def delete_chunks(rel_path):
     query = {"term": {"doc_id": rel_path}}
@@ -77,22 +77,22 @@ def add_file(rel_path, new_hash):
     upsert_manifest(rel_path, new_hash)
 
 def process_files():
-    manifest_response = ES.search(
-        index=ES_MANIFEST_INDEX,
-        body={
-            "query": {"match_all": {}},
-            "size": 10000,
-            "_source": ["path", "hash"]
-        }
-    )
     manifest_hash_by_file = {
         hit["_source"]["path"]: hit["_source"]["hash"]
-        for hit in manifest_response["hits"]["hits"]
+        for hit in helpers.scan(
+            ES,
+            index=ES_MANIFEST_INDEX,
+            query={
+                "query": {"match_all": {}},
+                "_source": ["path", "hash"]
+            },
+            size=1000
+        )
     }
-    repos = sg_list_repos(prefix="")
+    repos = list_repos(prefix="")
     processed_paths = set()
     for repo in repos:
-        for rel_path, current_hash in sg_list_repo_files(repo):
+        for rel_path, current_hash in list_repo_files(repo):
             try:
                 processed_paths.add(rel_path)
                 stored_hash = manifest_hash_by_file.get(rel_path)

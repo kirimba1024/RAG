@@ -1,8 +1,9 @@
 """Sourcegraph инструменты для работы с кодом через GraphQL API"""
 
+import os
 import requests
 from pathlib import Path
-from utils import SOURCEGRAPH_URL, SOURCEGRAPH_TOKEN, setup_logging, clean_text, REPOS_ROOT
+from utils import SOURCEGRAPH_URL, SOURCEGRAPH_TOKEN, setup_logging, clean_text, REPOS_ROOT, file_hash, is_ignored, to_posix, extract_binary_content
 from mask import mask_secrets, check_secrets_in_text
 
 logger = setup_logging(Path(__file__).stem)
@@ -14,15 +15,6 @@ HEADERS = {
 }
 
 CHUNK_SIZE = 512
-
-import pytesseract
-from PIL import Image
-from io import BytesIO
-import fitz
-import pandas as pd
-from docx import Document as DocxDocument
-from pptx import Presentation
-from llama_index.readers.file import UnstructuredReader
 
 def _execute_graphql(query: str, variables: dict | None = None) -> dict:
     payload = {"query": query}
@@ -37,41 +29,6 @@ def _split_file_path(rel_path: str) -> tuple[str, str]:
     if len(parts) < 2:
         raise ValueError(f"Invalid file path format: {rel_path}. Expected format: repo/path")
     return parts[0], parts[1]
-
-def _extract_binary_content(rel_path: str):
-    repo, path = _split_file_path(rel_path)
-    raw_url = f"{SOURCEGRAPH_URL}/{repo}@HEAD/-/raw/{path}"
-    resp = requests.get(raw_url, headers=HEADERS, timeout=30)
-    resp.raise_for_status()
-    file_bytes = resp.content
-    ext = Path(rel_path).suffix.lower()
-    if ext == ".pdf":
-        doc = fitz.open(stream=BytesIO(file_bytes), filetype="pdf")
-        return "\n".join([page.get_text() for page in doc])
-    elif ext == ".docx":
-        docx_doc = DocxDocument(BytesIO(file_bytes))
-        return "\n".join([para.text for para in docx_doc.paragraphs])
-    elif ext == ".pptx":
-        prs = Presentation(BytesIO(file_bytes))
-        text_parts = []
-        for slide in prs.slides:
-            for shape in slide.shapes:
-                text_parts.append(shape.text)
-        return "\n".join(text_parts)
-    elif ext in [".html", ".epub", ".rtf"]:
-        reader = UnstructuredReader()
-        docs = reader.load_data(file=BytesIO(file_bytes))
-        return "\n".join([doc.text for doc in docs])
-    elif ext == ".csv":
-        df = pd.read_csv(BytesIO(file_bytes))
-        return df.to_string(index=False)
-    elif ext in [".xls", ".xlsx"]:
-        df = pd.read_excel(BytesIO(file_bytes))
-        return df.to_string(index=False)
-    elif ext in [".png", ".jpg", ".jpeg", ".tif", ".tiff", ".webp", ".bmp"]:
-        img = Image.open(BytesIO(file_bytes))
-        return pytesseract.image_to_string(img, lang="rus+eng")
-    return None
 
 def _split_by_symbols(symbols: list, content: str) -> list[dict]:
     if not content:
@@ -140,7 +97,7 @@ def get_file_chunks(rel_path: str) -> list[dict]:
     result = _execute_graphql(gql, {"repo": repo, "path": path, "rev": "HEAD"})
     file_data = result["data"]["repository"]["commit"]["file"]
     if file_data.get("binary"):
-        content = _extract_binary_content(rel_path)
+        content = extract_binary_content(rel_path)
         return custom_split(content, "binary")
     content = file_data.get("content")
     symbols = (file_data.get("symbols", {}) or {}).get("nodes", [])
@@ -148,20 +105,13 @@ def get_file_chunks(rel_path: str) -> list[dict]:
         return _split_by_symbols(symbols, content)
     return custom_split(content, "text")
 
-def get_file_hash(rel_path: str) -> str | None:
-    repo, path = _split_file_path(rel_path)
-    gql_query = """
-    query BlobOid($repo: String!, $path: String!, $rev: String!) {
-      repository(name: $repo) { commit(rev: $rev) { file(path: $path) { oid } } }
-    }
-    """
-    result = _execute_graphql(gql_query, {"repo": repo, "path": path, "rev": "HEAD"})
-    file_data = result["data"]["repository"]["commit"]["file"]
-    return file_data.get("oid")
-
-def sg_search(query: str, repo: str, limit: int) -> str:
-    repo_filter = f"repo:{repo}@HEAD" if repo else ""
-    search_query = f"{repo_filter} {query}" if repo_filter else query
+def sg_search(query: str, path_prefix: str, limit: int) -> str:
+    path_prefix = path_prefix.lstrip("/").lstrip(".")
+    repo, *rest = path_prefix.split("/", 1)
+    filters = [f"repo:{repo}@HEAD"]
+    if rest:
+        filters.append(f"file:{rest[0]}")
+    search_query = f"{' '.join(filters)} {query}"
     gql_query = """
     query SearchResults($query: String!, $limit: Int!) {
       search(query: $query, first: $limit) {
@@ -173,7 +123,8 @@ def sg_search(query: str, repo: str, limit: int) -> str:
     matches = result["data"]["search"]["results"]["results"]
     if not matches:
         return f"Поиск: '{query}' не дал результатов"
-    out = [f"🔍 Sourcegraph поиск: '{query}' ({len(matches)} результатов):\n"]
+    prefix_info = f" ({path_prefix})" if path_prefix else ""
+    out = [f"🔍 Sourcegraph поиск: '{query}'{prefix_info} ({len(matches)} результатов):\n"]
     for m in matches:
         f = m["file"]
         out.append(f"\n📄 {f['path']}")
@@ -181,9 +132,14 @@ def sg_search(query: str, repo: str, limit: int) -> str:
             out.append(f"  {lm['lineNumber']}: {lm['preview'].strip()}")
     return "\n".join(out)
 
-def sg_codeintel(mode: str, symbol: str, repo: str) -> str:
-    query_filter = f"repo:{repo}@HEAD" if repo else ""
-    symbol_query = f"{query_filter} {symbol}".strip() if query_filter else symbol
+def sg_codeintel(mode: str, symbol: str, path_prefix: str) -> str:
+    path_prefix = path_prefix.lstrip("/").lstrip(".")
+    repo, *rest = path_prefix.split("/", 1)
+    filters = [f"repo:{repo}@HEAD"]
+    if rest:
+        filters.append(f"file:{rest[0]}")
+    query_filter = " ".join(filters)
+    symbol_query = f"{query_filter} {symbol}"
     gql_query_map = {
         "definitions": """
           query Definitions($symbol: String!) {
@@ -241,30 +197,3 @@ def sg_blob(rel_path: str, start_line: int, end_line: int) -> str:
     for i, line in enumerate(selected, start=start_line):
         out.append(f"{i:4d} | {line}")
     return "\n".join(out)
-
-
-def sg_list_repos(prefix: str) -> list[str]:
-    gql = """
-    query Repos($first: Int!) { repositories(first: $first) { nodes { name } } }
-    """
-    data = _execute_graphql(gql, {"first": 500})["data"]["repositories"]["nodes"]
-    names = [n["name"] for n in data]
-    return [n for n in names if n.startswith(prefix)] if prefix else names
-
-
-def sg_list_repo_files(repo: str, limit: int = 5000) -> list[tuple[str, str | None]]:
-    gql = """
-    query RepoFiles($query: String!, $limit: Int!) {
-      search(query: $query, first: $limit) { results { results { ... on FileMatch { file { path } } } } }
-    }
-    """
-    q = f"repo:{repo}@HEAD type:file"
-    results = _execute_graphql(gql, {"query": q, "limit": limit})["data"]["search"]["results"]["results"]
-    files = []
-    for r in results:
-        file_path = r["file"]["path"]
-        file_rel_path = f"{repo}/{file_path}"
-        oid = get_file_hash(file_rel_path)
-        files.append((file_rel_path, oid))
-    return files
-

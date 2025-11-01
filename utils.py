@@ -5,9 +5,17 @@ import os
 import re
 import unicodedata
 from pathlib import Path
+from io import BytesIO
 
+import fitz
+import pandas as pd
+import pytesseract
+from PIL import Image
+from docx import Document as DocxDocument
+from pptx import Presentation
 from dotenv import load_dotenv
 from pathspec import PathSpec
+from llama_index.readers.file import UnstructuredReader
 
 load_dotenv()
 
@@ -78,14 +86,6 @@ def message_for_log(text: str, max_size = 256) -> str:
     half_size = max_size // 2
     return text[:half_size] + "..." + text[-half_size:]
 
-
-def calc_hash(data) -> str:
-    if isinstance(data, (bytes, bytearray, memoryview)):
-        b = bytes(data)
-    else:
-        b = str(data).encode("utf-8", errors="ignore")
-    return hashlib.sha256(b).hexdigest()
-
 def short_hash(s: str) -> str:
     d = hashlib.blake2s(s.encode(), digest_size=8).digest()
     return base64.urlsafe_b64encode(d).decode().rstrip("=")
@@ -115,3 +115,53 @@ IGNORE_SPEC = PathSpec.from_lines("gitwildmatch", IGNORE_FILE.read_text(encoding
 
 def is_ignored(rel_path: Path) -> bool:
     return IGNORE_SPEC.match_file(to_posix(rel_path))
+
+def list_repos() -> list[str]:
+    return [p.name for p in REPOS_ROOT.iterdir() if p.is_dir() and (p / ".git").exists()]
+
+def git_blob_oid(path: Path) -> str:
+    data = path.read_bytes()
+    header = f"blob {len(data)}\0".encode()
+    return hashlib.sha1(header + data).hexdigest()
+
+def extract_binary_content(rel_path: str):
+    file_path = REPOS_ROOT / rel_path
+    with open(file_path, "rb") as f:
+        file_bytes = f.read()
+    ext = Path(rel_path).suffix.lower()
+    if ext == ".pdf":
+        doc = fitz.open(stream=BytesIO(file_bytes), filetype="pdf")
+        return "\n".join([page.get_text() for page in doc])
+    elif ext == ".docx":
+        docx_doc = DocxDocument(BytesIO(file_bytes))
+        return "\n".join([para.text for para in docx_doc.paragraphs])
+    elif ext == ".pptx":
+        prs = Presentation(BytesIO(file_bytes))
+        text_parts = []
+        for slide in prs.slides:
+            for shape in slide.shapes:
+                text_parts.append(shape.text)
+        return "\n".join(text_parts)
+    elif ext in [".html", ".epub", ".rtf"]:
+        reader = UnstructuredReader()
+        docs = reader.load_data(file=BytesIO(file_bytes))
+        return "\n".join([doc.text for doc in docs])
+    elif ext == ".csv":
+        df = pd.read_csv(BytesIO(file_bytes))
+        return df.to_string(index=False)
+    elif ext in [".xls", ".xlsx"]:
+        df = pd.read_excel(BytesIO(file_bytes))
+        return df.to_string(index=False)
+    elif ext in [".png", ".jpg", ".jpeg", ".tif", ".tiff", ".webp", ".bmp"]:
+        img = Image.open(BytesIO(file_bytes))
+        return pytesseract.image_to_string(img, lang="rus+eng")
+    return None
+
+def list_repo_files(repo: str):
+    repo_root = REPOS_ROOT / repo
+    for root, _, files in os.walk(repo_root):
+        for name in files:
+            full = Path(root) / name
+            rel_in_repo = full.relative_to(repo_root).as_posix()
+            rel_path = f"{repo}/{rel_in_repo}"
+            yield rel_path, git_blob_oid(full)

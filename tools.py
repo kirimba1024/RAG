@@ -112,10 +112,10 @@ TOOLS_SCHEMA = [
             "type": "object",
             "properties": {
                 "query": {"type": "string", "description": "Поисковый запрос"},
-                "repo": {"type": "string", "description": "Название репозитория (пустая строка если не фильтруем)"},
+                "path_prefix": {"type": "string", "description": "Префикс пути (пустая строка если не фильтруем)"},
                 "limit": {"type": "integer", "description": "Максимальное количество результатов"}
             },
-            "required": ["query", "repo", "limit"]
+            "required": ["query", "path_prefix", "limit"]
         }
     },
     {
@@ -126,9 +126,9 @@ TOOLS_SCHEMA = [
             "properties": {
                 "mode": {"type": "string", "description": "Режим: definitions, references, callers, callees"},
                 "symbol": {"type": "string", "description": "Имя символа"},
-                "repo": {"type": "string", "description": "Название репозитория (пустая строка если не фильтруем)"}
+                "path_prefix": {"type": "string", "description": "Префикс пути (пустая строка если не фильтруем)"}
             },
-            "required": ["mode", "symbol", "repo"]
+            "required": ["mode", "symbol", "path_prefix"]
         }
     },
     {

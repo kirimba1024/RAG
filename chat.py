@@ -28,8 +28,8 @@ TOOLS_MAP = {
     "code_stats": lambda p: code_stats(p["path_prefix"]),
     "architecture_stats": lambda p: architecture_stats(p["path_prefix"]),
     "execute_command": lambda p: execute_command(p["command"]),
-    "sg_search": lambda p: sg_search(p["query"], p["repo"], p["limit"]),
-    "sg_codeintel": lambda p: sg_codeintel(p["mode"], p["symbol"], p["repo"]),
+    "sg_search": lambda p: sg_search(p["query"], p["path_prefix"], p["limit"]),
+    "sg_codeintel": lambda p: sg_codeintel(p["mode"], p["symbol"], p["path_prefix"]),
     "sg_blob": lambda p: sg_blob(p["rel_path"], p["start_line"], p["end_line"]),
     "graphrag_query": lambda p: graphrag_query(p["task"], p["root"], p["k"]),
 }
