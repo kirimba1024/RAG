@@ -39,7 +39,7 @@ services:
       - "${SOURCEGRAPH_PORT:-3080}:7080"
     volumes:
       - ./data/sourcegraph:/var/opt/sourcegraph
-      - ./repos:/var/opt/sourcegraph/repos:ro
+      - ./repos:/var/opt/sourcegraph/repos
 
   rag-sandbox:
     build: ./images/sandbox
