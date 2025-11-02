@@ -27,16 +27,18 @@ def execute_command(command: str) -> str:
     )
     return result.output.decode('utf-8')
 
-def graphrag_query(task: str, root: str, k: int) -> str:
+def graphrag_query(task: str, path_prefix: str, k: int) -> str:
     client = docker.from_env()
     container = client.containers.get(GRAPHRAG_CONTAINER_NAME)
-    workdir = "/app/repos" + (f"/{root}" if root else "")
-    result = container.exec_run(
+    workdir = "/app/repos" + (f"/{path_prefix.lstrip('/')}" if path_prefix else "")
+    exec_result = container.exec_run(
         cmd=["graphrag", "query", "-t", task, "-k", str(k)],
         workdir=workdir,
-        timeout=120
     )
-    return result.output.decode('utf-8')
+    out = exec_result.output.decode("utf-8", errors="replace")
+    if exec_result.exit_code != 0:
+        return f"[graphrag error {exec_result.exit_code}] {out}"
+    return out
 
 TOOLS_SCHEMA = [
     {
@@ -59,10 +61,10 @@ TOOLS_SCHEMA = [
             "type": "object",
             "properties": {
                 "task": {"type": "string", "description": "Вопрос/задача"},
-                "root": {"type": "string", "description": "Путь к папке (пустая строка \"\" для корня репозитория)"},
+                "path_prefix": {"type": "string", "description": "Целостный путь к папке относительно корня репозитория (пустая строка для корня)"},
                 "k": {"type": "integer", "description": "Кол-во источников (стандартное значение: 5)"}
             },
-            "required": ["task", "root", "k"]
+            "required": ["task", "path_prefix", "k"]
         }
     },
     {

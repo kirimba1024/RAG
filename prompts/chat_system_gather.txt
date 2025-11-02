@@ -14,7 +14,7 @@
 3. sg_search(query, path_prefix, limit) — Точный поиск по коду (Sourcegraph) → для уточнения файла/символа.
 4. sg_codeintel(mode, symbol, path_prefix) — Code intelligence: definitions/references по коду.
 5. sg_blob(rel_path, start_line, end_line) — Вытащить точные строки из файла.
-6. graphrag_query(task, root, k) — «Как устроено/где описано» по документации через семантический граф.
+6. graphrag_query(task, path_prefix, k) — «Как устроено/где описано» по документации через семантический граф.
 7. code_stats(path_prefix) — «Сколько и чего» в данном сегменте кодовой базы.
 
 ВАЖНО: execute_command может заменить многие инструменты. 
