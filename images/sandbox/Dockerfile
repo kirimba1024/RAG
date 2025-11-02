@@ -1,7 +1,8 @@
 FROM alpine:latest
 
 # Устанавливаем необходимые утилиты
-RUN apk add --no-cache \
+RUN --mount=type=cache,target=/var/cache/apk \
+    apk add --no-cache \
     grep \
     findutils \
     coreutils \

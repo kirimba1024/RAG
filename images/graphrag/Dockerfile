@@ -1,12 +1,13 @@
 FROM python:3.11-slim
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN --mount=type=cache,target=/var/cache/apt \
+    --mount=type=cache,target=/var/lib/apt \
+    apt-get update && apt-get install -y --no-install-recommends \
     git \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Требуется DOCKER_BUILDKIT=1 для работы кэша pip
-RUN --mount=type=cache,target=/root/.cache/pip pip install -U graphrag
+RUN --mount=type=cache,target=/root/.cache/pip pip install graphrag
 
 COPY images/graphrag/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
