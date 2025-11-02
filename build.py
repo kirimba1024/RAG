@@ -8,7 +8,7 @@ from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 
 from utils import (
     ES_URL, ES_INDEX, ES_MANIFEST_INDEX,
-    EMBED_MODEL, REPOS_ROOT, git_blob_oid, setup_logging, is_ignored, to_posix
+    EMBED_MODEL, REPOS_SAFE_ROOT, git_blob_oid, setup_logging, is_ignored, to_posix
 )
 from sourcegraph import (
     get_file_chunks
@@ -90,8 +90,8 @@ def process_files():
         )
     }
     processed_paths = set()
-    for full in (f for f in REPOS_ROOT.rglob('**/*') if f.is_file()):
-        rel_path = to_posix(full.relative_to(REPOS_ROOT))
+    for full in (f for f in REPOS_SAFE_ROOT.rglob('**/*') if f.is_file()):
+        rel_path = to_posix(full.relative_to(REPOS_SAFE_ROOT))
         if is_ignored(rel_path):
             current_hash = None
         else:
