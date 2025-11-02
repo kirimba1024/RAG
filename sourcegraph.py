@@ -116,6 +116,8 @@ def sg_search(query: str, path_prefix: str, limit: int) -> str:
     }
     """
     result = _execute_graphql(gql_query, {"query": search_query})
+    if "errors" in result:
+        raise Exception(f"GraphQL ошибка: {result['errors']}")
     matches = result["data"]["search"]["results"]["results"][:limit]
     if not matches:
         return f"Поиск: '{query}' не дал результатов"
