@@ -1,4 +1,4 @@
-FROM sourcegraph/server:6.8.0
+FROM sourcegraph/server:6.7.0
 
 USER root
 

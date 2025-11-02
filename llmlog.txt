@@ -44,3 +44,24 @@
 - Упрощение sourcegraph.py: убраны все фильтры по репозиторию из sg_search и sg_codeintel (репозиторий всегда один); убрана переменная $repo из GraphQL запросов - имя репозитория встроено как константа через f-string; убрана переменная $rev из GraphQL запросов - rev: HEAD встроен как константа в запрос; все функции работают с rel_path как путём внутри монорепозитория без разделения на repo/path.
 - Упрощение build.py: цикл по файлам через REPOS_ROOT.rglob('**/*') с фильтрацией is_file и is_ignored в условии генератора; удалены неиспользуемые импорты os из tools.py; проверка is_ignored выполняется до вычисления hash; игнорируемые файлы получают current_hash=None и удаляются из индекса.
 - Обновление документации: README обновлён для описания работы с монорепозиторием; добавлено описание процесса repos/ (исходные) → mask.py → repos_safe/ → docker compose build → build.py → chat.py; обновлены примеры использования инструментов без параметра repo; промпты обновлены для монорепозитория.
+
+=== Настройка авторизации Sourcegraph 6.x ===
+
+Проблема: Sourcegraph 6.x не поддерживает Basic Auth для GraphQL API, требуется токен.
+
+Решение: 
+- Убрана автоматическая генерация токена через entrypoint (CSRF проблемы)
+- Токен создаётся вручную через UI Sourcegraph
+- Python код читает токен из SOURCEGRAPH_TOKEN env переменной
+- Добавлена инструкция в README.md (раздел 2.1)
+
+Файлы изменены:
+- sourcegraph.py: упрощена логика, только чтение из SOURCEGRAPH_TOKEN
+- images/sourcegraph/entrypoint.sh: убрана функция create_token, оставлен только src serve-git
+- images/sourcegraph/extsvc.json: исправлен путь repos/.git (реальный путь от src serve-git)
+- README.MD: добавлена инструкция по созданию токена
+
+Важно: 
+- repos/.git - это реальный путь который отдаёт src serve-git
+- repositoryPathPattern: "monorepo" - только для отображения в UI, не меняет URL клонирования
+

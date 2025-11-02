@@ -78,7 +78,7 @@ CLAUDE_MODEL=claude-3-5-sonnet-latest
 # URL Sourcegraph сервера (по умолчанию: http://localhost:3080)
 SOURCEGRAPH_URL=http://localhost:3080
 
-# Токен для доступа к GraphQL API (опционально, если не требует аутентификация)
+# Токен для доступа к GraphQL API (обязательно для Sourcegraph 6.x)
 SOURCEGRAPH_TOKEN=
 
 # ========================================
@@ -115,6 +115,30 @@ docker-compose up -d
 - Sourcegraph :3080 (структурный анализ кода)
 - Kibana :5601 (визуализация ES)
 - Sandbox (изолированная среда для команд)
+
+### 2.1. Настройка токена Sourcegraph
+
+После запуска Sourcegraph необходимо создать токен доступа:
+
+1. Откройте Sourcegraph в браузере: `http://localhost:3080`
+2. Войдите как admin (логин/пароль из `docker-compose.yml`, по умолчанию `admin`/`password`)
+3. Перейдите в настройки токенов:
+   - Нажмите на аватар (правый верхний угол) → **Settings** → **Access tokens**
+   - Или перейдите напрямую: `http://localhost:3080/user/settings/tokens`
+4. Создайте новый токен:
+   - Нажмите **Generate new token**
+   - Заполните:
+     - **Note**: `api-token` (или любое название)
+     - **Expiration**: по желанию (или оставьте без истечения)
+     - **Scopes**: выберите `user:all` (или нужные права)
+   - Нажмите **Generate token**
+5. **Важно:** Скопируйте токен сразу — он показывается только один раз
+6. Добавьте токен в `.env`:
+   ```
+   SOURCEGRAPH_TOKEN=ваш_токен_здесь
+   ```
+
+После добавления токена в `.env` все GraphQL запросы к Sourcegraph будут работать автоматически.
 
 Каталоги:
 - `repos/` — исходные Git-репозитории (сырые, с секретами)

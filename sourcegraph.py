@@ -1,19 +1,19 @@
 """Sourcegraph инструменты для работы с кодом через GraphQL API"""
 
+import os
 from pathlib import Path
 
 import requests
 
-from utils import SOURCEGRAPH_URL, SOURCEGRAPH_TOKEN, SOURCEGRAPH_REPO_NAME, setup_logging
+from utils import SOURCEGRAPH_URL, SOURCEGRAPH_REPO_NAME, setup_logging
 
 logger = setup_logging(Path(__file__).stem)
 
 GRAPHQL_ENDPOINT = f"{SOURCEGRAPH_URL}/.api/graphql"
 HEADERS = {
     "Content-Type": "application/json",
+    "Authorization": f"token {os.getenv('SOURCEGRAPH_TOKEN')}",
 }
-if SOURCEGRAPH_TOKEN:
-    HEADERS["Authorization"] = f"token {SOURCEGRAPH_TOKEN}"
 
 CHUNK_SIZE = 512
 
@@ -29,15 +29,26 @@ def get_file_chunks(rel_path: str) -> list[dict]:
     gql = f"""
     query FileChunks($path: String!) {{
       repository(name: "{SOURCEGRAPH_REPO_NAME}") {{
-        commit(rev: HEAD) {{
+        commit(rev: "HEAD") {{
           file(path: $path) {{
             content
             binary
+          }}
+          blob(path: $path) {{
             symbols(first: 2000) {{
               nodes {{
                 name
                 kind
-                range {{ start {{ line }} end {{ line }} }}
+                location {{
+                  range {{
+                    start {{
+                      line
+                    }}
+                    end {{
+                      line
+                    }}
+                  }}
+                }}
               }}
             }}
           }}
@@ -46,27 +57,38 @@ def get_file_chunks(rel_path: str) -> list[dict]:
     }}
     """
     result = _execute_graphql(gql, {"path": rel_path})
-    file_data = result["data"]["repository"]["commit"]["file"]
+    if "errors" in result:
+        raise Exception(f"GraphQL ошибка: {result['errors']}")
+    commit_data = result["data"]["repository"]["commit"]
+    file_data = commit_data["file"]
+    blob_data = commit_data.get("blob")
     if file_data.get("binary"):
         raise Exception(f"Бинарный файл {rel_path} не обрабатывается")
     content = file_data.get("content")
     if not content:
         raise Exception(f"Файл {rel_path} имеет пустое содержимое")
-    symbols = (file_data.get("symbols", {}) or {}).get("nodes", [])
+    symbols = []
+    if blob_data:
+        symbols = (blob_data.get("symbols", {}) or {}).get("nodes", [])
     lines = content.split("\n")
     chunks = []
     if symbols:
         for s in symbols:
-            start = s["range"]["start"]["line"]
-            end = s["range"]["end"]["line"]
-            text = "\n".join(lines[start-1:end])
-            chunks.append({
-                "start_line": start,
-                "end_line": end,
-                "kind": s["kind"],
-                "text": text,
-            })
-        return chunks
+            location = s.get("location", {})
+            range_data = location.get("range", {})
+            start = range_data.get("start", {}).get("line")
+            end = range_data.get("end", {}).get("line")
+            if start and end:
+                text = "\n".join(lines[start-1:end])
+                if text:
+                    chunks.append({
+                        "start_line": start,
+                        "end_line": end,
+                        "kind": s.get("kind", "text"),
+                        "text": text,
+                    })
+        if chunks:
+            return chunks
     start_line = 1
     while start_line <= len(lines):
         end_line = min(start_line + CHUNK_SIZE - 1, len(lines))
@@ -87,14 +109,14 @@ def sg_search(query: str, path_prefix: str, limit: int) -> str:
     else:
         search_query = query
     gql_query = """
-    query SearchResults($query: String!, $limit: Int!) {
-      search(query: $query, first: $limit) {
+    query SearchResults($query: String!) {
+      search(query: $query) {
         results { results { ... on FileMatch { file { path url } lineMatches { lineNumber preview } } } }
       }
     }
     """
-    result = _execute_graphql(gql_query, {"query": search_query, "limit": limit})
-    matches = result["data"]["search"]["results"]["results"]
+    result = _execute_graphql(gql_query, {"query": search_query})
+    matches = result["data"]["search"]["results"]["results"][:limit]
     if not matches:
         return f"Поиск: '{query}' не дал результатов"
     prefix_info = f" ({path_prefix})" if path_prefix else ""
@@ -109,53 +131,34 @@ def sg_search(query: str, path_prefix: str, limit: int) -> str:
 def sg_codeintel(mode: str, symbol: str, path_prefix: str) -> str:
     path_prefix = path_prefix.lstrip("/").lstrip(".")
     if path_prefix:
-        symbol_query = f"file:{path_prefix} {symbol}"
+        search_query = f"type:symbol file:{path_prefix} {symbol}"
     else:
-        symbol_query = symbol
-    gql_query_map = {
-        "definitions": """
-          query Definitions($symbol: String!) {
-            symbolSearch(query: $symbol, first: 10) {
-              results { result { file { path } symbol { name containerName } locations { range { start { line } end { line } } } } }
-            }
-          }
-        """,
-        "references": """
-          query References($symbol: String!) {
-            symbolReferences(query: $symbol, first: 20) {
-              references { file { path } symbol { name } location { range { start { line } end { line } } } }
-            }
-          }
-        """,
+        search_query = f"type:symbol {symbol}"
+    gql_query = """
+    query SymbolSearch($query: String!) {
+      search(query: $query) {
+        results { results { ... on FileMatch { file { path } lineMatches { lineNumber } } } }
+      }
     }
-    gql_query = gql_query_map[mode]
-    data = _execute_graphql(gql_query, {"symbol": symbol_query})["data"]
-    if mode == "definitions":
-        defs = data["symbolSearch"]["results"]
-        if not defs:
-            return f"Определения для '{symbol}' не найдены"
-        out = [f"📌 Определения символа '{symbol}':\n"]
-        for d in defs:
-            r = d["result"]
-            out.append(f"  📄 {r['file']['path']}")
-            out.append(f"     Символ: {r['symbol']['name']}")
-            for loc in r["locations"][:3]:
-                out.append(f"     Строки: {loc['range']['start']['line']}")
-        return "\n".join(out)
-    if mode == "references":
-        refs = data["symbolReferences"]["references"]
-        if not refs:
-            return f"Ссылки на '{symbol}' не найдены"
-        out = [f"🔗 Ссылки на символ '{symbol}' ({len(refs)} найден):\n"]
-        for r in refs[:15]:
-            out.append(f"  📄 {r['file']['path']}:{r['location']['range']['start']['line']}")
-        return "\n".join(out)
-    return f"Обработан режим: {mode}"
+    """
+    result = _execute_graphql(gql_query, {"query": search_query})
+    if "errors" in result:
+        raise Exception(f"GraphQL ошибка: {result['errors']}")
+    matches = result["data"]["search"]["results"]["results"]
+    if not matches:
+        return f"Символ '{symbol}' не найден"
+    out = [f"📌 {'Определения' if mode == 'definitions' else 'Ссылки'} символа '{symbol}':\n"]
+    for m in matches[:15]:
+        f = m["file"]
+        lines = [lm["lineNumber"] for lm in m.get("lineMatches", [])[:5]]
+        line_str = f":{lines[0]}" if lines else ""
+        out.append(f"  📄 {f['path']}{line_str}")
+    return "\n".join(out)
 
 def sg_blob(rel_path: str, start_line: int, end_line: int) -> str:
     gql_query = f"""
     query BlobContent($path: String!) {{
-      repository(name: "{SOURCEGRAPH_REPO_NAME}") {{ commit(rev: HEAD) {{ file(path: $path) {{ content binary }} }} }}
+      repository(name: "{SOURCEGRAPH_REPO_NAME}") {{ commit(rev: "HEAD") {{ file(path: $path) {{ content binary }} }} }}
     }}
     """
     result = _execute_graphql(gql_query, {"path": rel_path})
