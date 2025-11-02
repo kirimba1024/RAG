@@ -15,29 +15,14 @@ wait_for_sourcegraph() {
 add_local_monorepo() {
   [ -d /var/opt/sourcegraph/monorepo/.git ] || return 0
 
-  curl -fsS "$SRC_URL/.api/graphql" \
-    -u "${SOURCEGRAPH_INITIAL_SITE_ADMIN_USERNAME:-admin}:${SOURCEGRAPH_INITIAL_SITE_ADMIN_PASSWORD:-password}" \
-    -H "Content-Type: application/json" \
-    -d '{"query":"{ externalServices { nodes { displayName } } }"}' \
+  src login "$SRC_URL" -u "${SOURCEGRAPH_INITIAL_SITE_ADMIN_USERNAME:-admin}" -p "${SOURCEGRAPH_INITIAL_SITE_ADMIN_PASSWORD:-password}" >/dev/null 2>&1 || return 0
+
+  src api -query '{ externalServices { nodes { displayName } } }' 2>/dev/null \
     | grep -q "Local monorepo" && return 0
 
-  cat > /tmp/add-local-repo.json <<'JSON'
-{
-  "query": "mutation AddLocal($input: AddExternalServiceInput!) { addExternalService(input: $input) { id } }",
-  "variables": {
-    "input": {
-      "kind": "OTHER",
-      "displayName": "Local monorepo",
-      "config": "{\n  \"url\": \"file:///var/opt/sourcegraph/monorepo\",\n  \"repos\": [\"monorepo\"]\n}"
-    }
-  }
-}
-JSON
-
-  curl -fsS -X POST "$SRC_URL/.api/graphql" \
-    -u "${SOURCEGRAPH_INITIAL_SITE_ADMIN_USERNAME:-admin}:${SOURCEGRAPH_INITIAL_SITE_ADMIN_PASSWORD:-password}" \
-    -H "Content-Type: application/json" \
-    --data-binary @/tmp/add-local-repo.json >/dev/null 2>&1 || true
+  src api -query 'mutation AddLocal($input: AddExternalServiceInput!) { addExternalService(input: $input) { id } }' \
+    -vars '{"input": {"kind": "OTHER", "displayName": "Local monorepo", "config": "{\"url\": \"file:///var/opt/sourcegraph/monorepo\", \"repos\": [\"monorepo\"]}"}}' \
+    >/dev/null 2>&1 || true
 
   echo "[sourcegraph] Local monorepo added"
 }
@@ -46,9 +31,10 @@ main() {
   if [ "${PROVISION_REPOS}" != "1" ]; then
     exec /sbin/tini -- /server server "$@"
   fi
+  /sbin/tini -- /server server "$@" &
   wait_for_sourcegraph
   add_local_monorepo
-  exec /sbin/tini -- /server server "$@"
+  wait
 }
 
 main "$@"

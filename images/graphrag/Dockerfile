@@ -7,7 +7,7 @@ RUN --mount=type=cache,target=/var/cache/apt \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-RUN --mount=type=cache,target=/root/.cache/pip pip install graphrag
+RUN --mount=type=cache,target=/root/.cache/pip pip install graphrag==2.7.0
 
 COPY images/graphrag/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
