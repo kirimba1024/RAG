@@ -11,23 +11,16 @@ fi
 
 echo "[graphrag] Starting GraphRAG indexing..."
 
-if [ ! -f ".graphrag/config.yaml" ]; then
+if [ ! -f "settings.yaml" ]; then
     echo "[graphrag] Initializing GraphRAG..."
     graphrag init || true
 fi
 
 echo "[graphrag] Running index (will continue if interrupted)..."
-OUTPUT=$(graphrag run index 2>&1)
-EXIT_CODE=$?
-
-if [ -n "$OUTPUT" ]; then
-    echo "$OUTPUT"
-fi
-
-if [ $EXIT_CODE -ne 0 ]; then
-    echo "[graphrag] Error: indexing failed with exit code $EXIT_CODE"
-    exit $EXIT_CODE
-fi
+graphrag run index 2>&1 || {
+    echo "[graphrag] Error: indexing failed. Container will stay running for manual inspection."
+    echo "[graphrag] You can exec into container and run: graphrag run index"
+}
 
 if [ -d ".graphrag" ] && [ -f ".graphrag/config.yaml" ]; then
     echo "[graphrag] Indexing completed successfully"

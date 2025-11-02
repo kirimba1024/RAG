@@ -8,8 +8,6 @@ services:
       - ES_INDEX=${ES_INDEX:-rag}
     ports:
       - "${ES_PORT:-9200}:9200"
-    volumes:
-      - ./data/elasticsearch:/usr/share/elasticsearch/data
 
   kibana:
     image: docker.elastic.co/kibana/kibana:8.12.0
@@ -39,14 +37,6 @@ services:
       - PROVISION_REPOS=1
     ports:
       - "${SOURCEGRAPH_PORT:-3080}:7080"
-    volumes:
-      - ./data/sourcegraph/postgresql:/var/opt/sourcegraph/postgresql
-      - ./data/sourcegraph/zoekt:/var/opt/sourcegraph/zoekt
-      - ./data/sourcegraph/blobstore:/var/opt/sourcegraph/blobstore
-      - ./data/sourcegraph/redis:/var/opt/sourcegraph/redis
-      - ./data/sourcegraph/redis-cache:/var/opt/sourcegraph/redis-cache
-      - ./data/sourcegraph/grafana:/var/opt/sourcegraph/grafana
-      - ./data/sourcegraph/prometheus:/var/opt/sourcegraph/prometheus
 
   rag-sandbox:
     build:
@@ -59,8 +49,6 @@ services:
     build:
       context: .
       dockerfile: ./images/graphrag/Dockerfile
-    volumes:
-      - ./data/graphrag/.graphrag:/app/repos/.graphrag
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
     restart: unless-stopped
