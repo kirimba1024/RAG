@@ -1,7 +1,6 @@
 from pathlib import Path
 import re
 import shutil
-import mimetypes
 import subprocess
 from utils import clean_text, extract_binary_content, setup_logging, REPOS_ROOT, REPOS_SAFE_ROOT, is_ignored, to_posix
 
@@ -115,30 +114,15 @@ def classify_secret_type(pattern: str) -> str:
     return '⚠️'
 
 def check_secrets_in_text(text: str) -> None:
-    for pat, _ in SECRET_PATTERNS:
-        for match in pat.finditer(text):
-            match_text = match.group(0)
-            line_num = text[:match.start()].count('\n') + 1
-            secret_type = classify_secret_type(pat.pattern)
-            display_text = match_text if len(match_text) <= 120 else match_text[:120] + '...'
-            
-            if "REDACTED" not in match_text:
-                logger.error(f"🔒 Найден секрет без REDACTED: {secret_type} line {line_num}: {display_text}")
-            else:
-                logger.info(f"🔒 {secret_type} line {line_num}: {display_text}")
+    pass
 
 
 def mask_secrets(text: str) -> str:
-    findings = [
-        (text[:m.start()].count('\n') + 1, get_emoji(pat.pattern, repl),
-         m.group(0) if len(m.group(0)) <= 60 else m.group(0)[:57] + '...')
-        for pat, repl in SECRET_PATTERNS
-        for m in pat.finditer(text)
-    ]
-    if findings:
-        for line_num, emoji, match_text in findings:
-            logger.info(f"🔒 {emoji} line {line_num}: {match_text}")
     for pat, repl in SECRET_PATTERNS:
+        for m in pat.finditer(text):
+            original = m.group(0)
+            replaced = repl if isinstance(repl, str) else repl(m)
+            logger.info(f"🔒 Найдено: {original} -> {replaced}")
         text = pat.sub(repl, text)
     return text
 
