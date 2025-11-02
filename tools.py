@@ -32,7 +32,7 @@ def graphrag_query(task: str, root: str, k: int) -> str:
     container = client.containers.get("rag-assistant-graphrag-1")
     workdir = "/app/repos" + (f"/{root}" if root else "")
     result = container.exec_run(
-        cmd=["graphrag", "run", "query", "-t", task, "-k", str(k)],
+        cmd=["graphrag", "query", "-t", task, "-k", str(k)],
         workdir=workdir,
         timeout=120
     )

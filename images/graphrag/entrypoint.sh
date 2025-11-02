@@ -5,7 +5,7 @@ cd /app/repos
 
 if [ -d ".graphrag" ] && [ -f ".graphrag/config.yaml" ]; then
     echo "[graphrag] Existing complete index found, skipping indexing."
-    echo "[graphrag] Container ready for queries. Use: docker exec -it <container> graphrag run query -t 'your question' -k 5"
+    echo "[graphrag] Container ready for queries. Use: docker exec -it <container> graphrag query -t 'your question' -k 5"
     exec sleep infinity
 fi
 
@@ -17,14 +17,14 @@ if [ ! -f "settings.yaml" ]; then
 fi
 
 echo "[graphrag] Running index (will continue if interrupted)..."
-graphrag run index 2>&1 || {
+graphrag index 2>&1 || {
     echo "[graphrag] Error: indexing failed. Container will stay running for manual inspection."
-    echo "[graphrag] You can exec into container and run: graphrag run index"
+    echo "[graphrag] You can exec into container and run: graphrag index"
 }
 
 if [ -d ".graphrag" ] && [ -f ".graphrag/config.yaml" ]; then
     echo "[graphrag] Indexing completed successfully"
-    echo "[graphrag] Container ready for queries. Use: docker exec -it <container> graphrag run query -t 'your question' -k 5"
+    echo "[graphrag] Container ready for queries. Use: docker exec -it <container> graphrag query -t 'your question' -k 5"
 else
     echo "[graphrag] Error: .graphrag directory not found after indexing"
     exit 1
