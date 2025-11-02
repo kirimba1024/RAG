@@ -1,8 +1,9 @@
-[
-  {
-    "kind": "OTHER",
-    "displayName": "Local monorepo",
-    "config": "{\"url\": \"file:///var/opt/sourcegraph/monorepo\", \"repos\": [\"monorepo\"]}"
-  }
-]
-
+{
+  "OTHER": [
+    {
+      "url": "http://127.0.0.1:3434",
+      "repos": ["repos/.git"],
+      "repositoryPathPattern": "monorepo"
+    }
+  ]
+}
