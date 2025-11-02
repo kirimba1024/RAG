@@ -5,7 +5,7 @@ from pathlib import Path
 import requests
 
 from mask import mask_secrets, check_secrets_in_text
-from utils import SOURCEGRAPH_URL, SOURCEGRAPH_TOKEN, setup_logging, clean_text, extract_binary_content
+from utils import SOURCEGRAPH_URL, SOURCEGRAPH_TOKEN, setup_logging, clean_text
 
 logger = setup_logging(Path(__file__).stem)
 
@@ -31,49 +31,6 @@ def _split_file_path(rel_path: str) -> tuple[str, str]:
         raise ValueError(f"Invalid file path format: {rel_path}. Expected format: repo/path")
     return parts[0], parts[1]
 
-def _split_by_symbols(symbols: list, content: str) -> list[dict]:
-    if not content:
-        return []
-    content = sanitize_chunk(content)
-    lines = content.split("\n")
-    chunks = []
-    for s in symbols:
-        start = s["range"]["start"]["line"]
-        end = s["range"]["end"]["line"]
-        text = "\n".join(lines[start-1:end])
-        chunks.append({
-            "start_line": start,
-            "end_line": end,
-            "kind": s["kind"],
-            "text": text,
-        })
-    return chunks
-
-def custom_split(content: str, kind: str) -> list[dict]:
-    if not content:
-        return []
-    content = sanitize_chunk(content)
-    lines = content.split("\n")
-    chunks = []
-    start_line = 1
-    while start_line <= len(lines):
-        end_line = min(start_line + CHUNK_SIZE - 1, len(lines))
-        text = "\n".join(lines[start_line-1:end_line])
-        chunks.append({
-            "start_line": start_line,
-            "end_line": end_line,
-            "kind": kind,
-            "text": text,
-        })
-        start_line = end_line + 1
-    return chunks
-
-def sanitize_chunk(text: str) -> str:
-    text = clean_text(text)
-    text = mask_secrets(text)
-    check_secrets_in_text(text)
-    return text
-
 def get_file_chunks(rel_path: str) -> list[dict]:
     repo, path = _split_file_path(rel_path)
     gql = """
@@ -98,13 +55,37 @@ def get_file_chunks(rel_path: str) -> list[dict]:
     result = _execute_graphql(gql, {"repo": repo, "path": path, "rev": "HEAD"})
     file_data = result["data"]["repository"]["commit"]["file"]
     if file_data.get("binary"):
-        content = extract_binary_content(rel_path)
-        return custom_split(content, "binary")
+        raise Exception(f"Бинарный файл {rel_path} не обрабатывается")
     content = file_data.get("content")
+    if not content:
+        raise Exception(f"Файл {rel_path} имеет пустое содержимое")
     symbols = (file_data.get("symbols", {}) or {}).get("nodes", [])
+    lines = content.split("\n")
+    chunks = []
     if symbols:
-        return _split_by_symbols(symbols, content)
-    return custom_split(content, "text")
+        for s in symbols:
+            start = s["range"]["start"]["line"]
+            end = s["range"]["end"]["line"]
+            text = "\n".join(lines[start-1:end])
+            chunks.append({
+                "start_line": start,
+                "end_line": end,
+                "kind": s["kind"],
+                "text": text,
+            })
+        return chunks
+    start_line = 1
+    while start_line <= len(lines):
+        end_line = min(start_line + CHUNK_SIZE - 1, len(lines))
+        text = "\n".join(lines[start_line-1:end_line])
+        chunks.append({
+            "start_line": start_line,
+            "end_line": end_line,
+            "kind": "text",
+            "text": text,
+        })
+        start_line = end_line + 1
+    return chunks
 
 def sg_search(query: str, path_prefix: str, limit: int) -> str:
     path_prefix = path_prefix.lstrip("/").lstrip(".")

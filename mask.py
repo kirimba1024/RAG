@@ -1,6 +1,8 @@
 from pathlib import Path
 import re
-from utils import setup_logging
+import shutil
+import mimetypes
+from utils import clean_text, extract_binary_content, setup_logging, REPOS_ROOT, is_ignored
 
 logger = setup_logging(Path(__file__).stem)
 
@@ -138,3 +140,45 @@ def mask_secrets(text: str) -> str:
     for pat, repl in SECRET_PATTERNS:
         text = pat.sub(repl, text)
     return text
+
+
+def mask_directory(src_dir: Path, dst_dir: Path):
+    for item in src_dir.rglob('*'):
+        if item.is_dir():
+            continue
+        rel_path = item.relative_to(src_dir)
+        if is_ignored(rel_path):
+            continue
+        dst_path = dst_dir / rel_path
+        dst_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            content = item.read_text(encoding='utf-8')
+            content = mask_secrets(content)
+            check_secrets_in_text(content)
+            dst_path.write_text(content, encoding='utf-8')
+            logger.debug(f"Маскирован: {rel_path}")
+        except UnicodeDecodeError:
+            try:
+                content = extract_binary_content(item)
+                content = clean_text(content)
+                content = mask_secrets(content)
+                check_secrets_in_text(content)
+                dst_path.write_text(content, encoding='utf-8')
+                logger.debug(f"Бинарный файл распознан и маскирован: {rel_path}")
+            except Exception as e:
+                logger.error(f"Ошибка при обработке бинарного файла {rel_path}: {e}")
+                shutil.copy2(item, dst_path)
+        except Exception as e:
+            logger.error(f"Ошибка при обработке файла {rel_path}: {e}")
+            shutil.copy2(item, dst_path)
+
+def main():
+    masked_root = Path('repos_safe')
+    if masked_root.exists():
+        shutil.rmtree(masked_root)
+    masked_root.mkdir()
+    mask_directory(REPOS_ROOT, masked_root)
+    logger.info(f"Маскирование завершено: {masked_root}")
+
+if __name__ == "__main__":
+    main()

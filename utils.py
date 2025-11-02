@@ -124,11 +124,10 @@ def git_blob_oid(path: Path) -> str:
     header = f"blob {len(data)}\0".encode()
     return hashlib.sha1(header + data).hexdigest()
 
-def extract_binary_content(rel_path: str):
-    file_path = REPOS_ROOT / rel_path
-    with open(file_path, "rb") as f:
+def extract_binary_content(path: Path):
+    with open(path, "rb") as f:
         file_bytes = f.read()
-    ext = Path(rel_path).suffix.lower()
+    ext = path.suffix.lower()
     if ext == ".pdf":
         doc = fitz.open(stream=BytesIO(file_bytes), filetype="pdf")
         return "\n".join([page.get_text() for page in doc])
