@@ -2,7 +2,8 @@ from pathlib import Path
 import re
 import shutil
 import mimetypes
-from utils import clean_text, extract_binary_content, setup_logging, REPOS_ROOT, is_ignored
+import subprocess
+from utils import clean_text, extract_binary_content, setup_logging, REPOS_ROOT, REPOS_SAFE_ROOT, is_ignored
 
 logger = setup_logging(Path(__file__).stem)
 
@@ -173,12 +174,14 @@ def mask_directory(src_dir: Path, dst_dir: Path):
             shutil.copy2(item, dst_path)
 
 def main():
-    masked_root = Path('repos_safe')
-    if masked_root.exists():
-        shutil.rmtree(masked_root)
-    masked_root.mkdir()
-    mask_directory(REPOS_ROOT, masked_root)
-    logger.info(f"Маскирование завершено: {masked_root}")
+    if REPOS_SAFE_ROOT.exists():
+        shutil.rmtree(REPOS_SAFE_ROOT)
+    REPOS_SAFE_ROOT.mkdir()
+    mask_directory(REPOS_ROOT, REPOS_SAFE_ROOT)
+    subprocess.run(['git', '-C', str(REPOS_SAFE_ROOT), 'init'], check=True)
+    subprocess.run(['git', '-C', str(REPOS_SAFE_ROOT), 'add', '.'], check=True)
+    subprocess.run(['git', '-C', str(REPOS_SAFE_ROOT), 'commit', '-m', 'Initial commit'], check=True)
+    logger.info(f"Маскирование завершено: {REPOS_SAFE_ROOT}")
 
 if __name__ == "__main__":
     main()

@@ -37,6 +37,7 @@ SOURCEGRAPH_URL = os.getenv("SOURCEGRAPH_URL", "http://localhost:3080")
 SOURCEGRAPH_TOKEN = os.getenv("SOURCEGRAPH_TOKEN", "")
 
 REPOS_ROOT = Path("repos").resolve()
+REPOS_SAFE_ROOT = Path("repos_safe").resolve()
 
 LANG_BY_EXT = {
     ".py": "python", ".js": "javascript", ".jsx": "javascript",
