@@ -5,7 +5,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir graphrag
+# Требуется DOCKER_BUILDKIT=1 для работы кэша pip
+RUN --mount=type=cache,target=/root/.cache/pip pip install -U graphrag
 
 COPY images/graphrag/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh

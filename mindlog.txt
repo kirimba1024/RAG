@@ -1303,3 +1303,7 @@ graphrag.query(task)
 То есть да — это как раз та архитектура, которую обычно в прод и сводят.
 
 Если хочешь — давай я вытащу из этого «README-компакт» на 40–50 строк (архитектура + запуск + что за что отвечает), чтобы можно было кинуть в репо или коллеге.
+
+
+
+DOCKER_BUILDKIT=1 docker compose down -v --remove-orphans && DOCKER_BUILDKIT=1 docker compose build --no-cache && DOCKER_BUILDKIT=1 docker compose up -d
