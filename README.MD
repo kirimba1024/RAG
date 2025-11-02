@@ -75,8 +75,8 @@ CLAUDE_MODEL=claude-3-5-sonnet-latest
 # Sourcegraph (структурный анализ кода)
 # ========================================
 
-# URL Sourcegraph сервера (по умолчанию: http://localhost:3080)
-SOURCEGRAPH_URL=http://localhost:3080
+# URL Sourcegraph сервера (HTTPS через Caddy, по умолчанию: https://sg.localhost)
+SOURCEGRAPH_URL=https://sg.localhost
 
 # Токен для доступа к GraphQL API (обязательно для Sourcegraph 6.x)
 SOURCEGRAPH_TOKEN=
@@ -112,7 +112,7 @@ docker-compose up -d
 
 **Сервисы:** 
 - Elasticsearch :9200 (поиск + статистика)
-- Sourcegraph :3080 (структурный анализ кода)
+- Sourcegraph https://sg.localhost (структурный анализ кода, HTTPS через Caddy)
 - Kibana :5601 (визуализация ES)
 - Sandbox (изолированная среда для команд)
 
@@ -120,11 +120,12 @@ docker-compose up -d
 
 После запуска Sourcegraph необходимо создать токен доступа:
 
-1. Откройте Sourcegraph в браузере: `http://localhost:3080`
+1. Откройте Sourcegraph в браузере: **https://sg.localhost**
+   - При первом заходе Safari может показать предупреждение — нажмите **"Show Details"** → **"visit this website"**
 2. Войдите как admin (логин/пароль из `docker-compose.yml`, по умолчанию `admin`/`password`)
-3. Перейдите в настройки токенов:
-   - Нажмите на аватар (правый верхний угол) → **Settings** → **Access tokens**
-   - Или перейдите напрямую: `http://localhost:3080/user/settings/tokens`
+3. Перейдите на страницу генерации токенов:
+   - Прямая ссылка: **https://sg.localhost/user/settings/tokens**
+   - Или через UI: нажмите на аватар (правый верхний угол) → **Settings** → **Access tokens**
 4. Создайте новый токен:
    - Нажмите **Generate new token**
    - Заполните:
