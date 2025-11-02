@@ -11,8 +11,9 @@ logger = setup_logging(Path(__file__).stem)
 GRAPHQL_ENDPOINT = f"{SOURCEGRAPH_URL}/.api/graphql"
 HEADERS = {
     "Content-Type": "application/json",
-    "Authorization": f"token {SOURCEGRAPH_TOKEN}" if SOURCEGRAPH_TOKEN else "",
 }
+if SOURCEGRAPH_TOKEN:
+    HEADERS["Authorization"] = f"token {SOURCEGRAPH_TOKEN}"
 
 CHUNK_SIZE = 512
 

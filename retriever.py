@@ -16,6 +16,9 @@ logger = setup_logging(Path(__file__).stem)
 ES = Elasticsearch(ES_URL, request_timeout=30, max_retries=3, retry_on_timeout=True)
 
 Settings.embed_model = HuggingFaceEmbedding(EMBED_MODEL, normalize=True)
+embedding_dim = len(Settings.embed_model.get_text_embedding("test"))
+if embedding_dim != 1024:
+    raise ValueError(f"Несоответствие размерности эмбеддинга: модель {EMBED_MODEL} возвращает {embedding_dim}, а ES настроен на 1024. Измените dims в images/elasticsearch/index.json или используйте модель с размерностью 1024.")
 
 DEVICE = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
 RERANKER = SentenceTransformerRerank(model=RERANK_MODEL, top_n=10, device=DEVICE)
