@@ -48,3 +48,12 @@ services:
       dockerfile: ./images/sandbox/Dockerfile
     image: rag-sandbox:stable
     restart: unless-stopped
+
+  graphrag:
+    build:
+      context: .
+      dockerfile: ./images/graphrag/Dockerfile
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - FORCE_REINDEX=${FORCE_REINDEX:-false}
+    restart: unless-stopped

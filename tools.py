@@ -1,5 +1,3 @@
-import subprocess
-
 import docker
 
 from retriever import retrieve_fusion_nodes, get_code_stats
@@ -30,17 +28,15 @@ def execute_command(command: str) -> str:
     return result.output.decode('utf-8')
 
 def graphrag_query(task: str, root: str, k: int) -> str:
-    base = REPOS_ROOT
-    root_path = to_posix(base if not root else base / root)
-    proc = subprocess.run(
-        ["graphrag", "run", "query", "-t", task, "-k", str(k)],
-        cwd=root_path,
-        check=True,
-        capture_output=True,
-        text=True,
-        timeout=120,
+    client = docker.from_env()
+    container = client.containers.get("rag-assistant-graphrag-1")
+    workdir = "/app/repos" + (f"/{root}" if root else "")
+    result = container.exec_run(
+        cmd=["graphrag", "run", "query", "-t", task, "-k", str(k)],
+        workdir=workdir,
+        timeout=120
     )
-    return proc.stdout
+    return result.output.decode('utf-8')
 
 TOOLS_SCHEMA = [
     {

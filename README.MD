@@ -55,7 +55,7 @@
 - `chat.py` — Gradio интерфейс с двухэтапным циклом (GATHER + ANSWER)
 - `retriever.py` — гибридный поиск ES (kNN+BM25+reranking) + статистика
 - `tools.py` — инструменты для Claude (main_search, sg_search, sg_codeintel, sg_blob, execute_command, code_stats, architecture_stats, graphrag_query)
-- `graphrag_build.py` — индексация GraphRAG для построения knowledge graph
+- `images/graphrag/` — Docker-образ для индексации GraphRAG (knowledge graph строится автоматически при запуске контейнера)
 - `sourcegraph.py` — GraphQL клиент для Sourcegraph API
 - `utils.py` — конфигурация и вспомогательные функции
 - `mask.py` — маскировка секретов при индексации
@@ -267,7 +267,7 @@ sg_blob(doc_id="backend/src/UserService.java", start_line=10, end_line=25)
 - Точные фрагменты кода по строкам
 - Получение символов для создания идеальных границ чанков
 
-### GraphRAG (graphrag_build.py, tools.py)
+### GraphRAG (Docker-образ, tools.py)
 - Индексация: Microsoft GraphRAG CLI строит knowledge graph из документов
 - Community summaries: автоматическое резюмирование связанных документов
 - Запросы: семантические ответы на архитектурные вопросы через `graphrag_query`
