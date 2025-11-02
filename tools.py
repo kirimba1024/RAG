@@ -30,7 +30,7 @@ def execute_command(command: str) -> str:
 def graphrag_query(task: str, path_prefix: str, k: int) -> str:
     client = docker.from_env()
     container = client.containers.get(GRAPHRAG_CONTAINER_NAME)
-    workdir = "/app/repos" + (f"/{path_prefix.lstrip('/')}" if path_prefix else "")
+    workdir = "/app/monorepo" + (f"/{path_prefix.lstrip('/')}" if path_prefix else "")
     exec_result = container.exec_run(
         cmd=["graphrag", "query", "-t", task, "-k", str(k)],
         workdir=workdir,

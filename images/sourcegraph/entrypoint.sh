@@ -52,15 +52,9 @@ JSON
   src config patch -autogit-ignore -f /tmp/site-update.json >/dev/null 2>&1
   set -e
 
-  # Добавляем локальные репозитории как file://
-  if [ -d "/var/opt/sourcegraph/repos" ]; then
-    find /var/opt/sourcegraph/repos -maxdepth 2 -type d -name .git | while read -r gitdir; do
-      repo_dir="$(dirname "$gitdir")"
-      name="$(basename "$repo_dir")"
-      url="file://$repo_dir"
-      echo "[sourcegraph] Adding repo $name -> $url"
-      src repos add -name "$name" -url "$url" >/dev/null 2>&1 || true
-    done
+  if [ -d "/var/opt/sourcegraph/monorepo/.git" ]; then
+    echo "[sourcegraph] Adding monorepo"
+    src repos add -name "monorepo" -url "file:///var/opt/sourcegraph/monorepo" >/dev/null 2>&1 || true
   fi
 
   date > "$FLAG_FILE"

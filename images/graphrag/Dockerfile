@@ -10,9 +10,9 @@ RUN pip install --no-cache-dir graphrag
 COPY images/graphrag/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
-COPY repos_safe /app/repos
+COPY repos_safe /app/monorepo
 
-WORKDIR /app/repos
+WORKDIR /app/monorepo
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 

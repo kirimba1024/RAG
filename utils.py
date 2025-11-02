@@ -35,7 +35,7 @@ ES_URL = f"http://{ES_HOST}:{ES_PORT}"
 
 SOURCEGRAPH_URL = os.getenv("SOURCEGRAPH_URL", "http://localhost:3080")
 SOURCEGRAPH_TOKEN = os.getenv("SOURCEGRAPH_TOKEN", "")
-SOURCEGRAPH_REPO_NAME = os.getenv("SOURCEGRAPH_REPO_NAME", "repos")
+SOURCEGRAPH_REPO_NAME = os.getenv("SOURCEGRAPH_REPO_NAME", "monorepo")
 
 SANDBOX_CONTAINER_NAME = os.getenv("SANDBOX_CONTAINER_NAME", "rag-assistant-rag-sandbox-1")
 GRAPHRAG_CONTAINER_NAME = os.getenv("GRAPHRAG_CONTAINER_NAME", "rag-assistant-graphrag-1")

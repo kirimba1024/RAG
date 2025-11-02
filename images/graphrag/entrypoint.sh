@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-cd /app/repos
+cd /app/monorepo
 
 if [ -d ".graphrag" ] && [ -f ".graphrag/config.yaml" ]; then
     echo "[graphrag] Existing complete index found, skipping indexing."

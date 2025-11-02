@@ -25,10 +25,10 @@ RUN mkdir -p /app
 COPY --chmod=0755 images/sandbox/entrypoint.sh /usr/local/bin/entrypoint.sh
 
 # Копируем репозитории в образ
-COPY repos_safe /app
+COPY repos_safe /app/monorepo
 
 # Устанавливаем рабочую директорию как корень
-WORKDIR /app
+WORKDIR /app/monorepo
 
 # Запускаем скрипт инициализации
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
