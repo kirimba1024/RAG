@@ -18,8 +18,6 @@ fi
 
 if [ -f "settings.yaml" ]; then
     echo "[graphrag] Configuring model provider..."
-    GRAPHRAG_MODEL="${GRAPHRAG_MODEL:-claude-3-haiku-20240307}"
-    GRAPHRAG_MODEL_PROVIDER="${GRAPHRAG_MODEL_PROVIDER:-anthropic}"
     sed -i "s/model_provider: openai/model_provider: ${GRAPHRAG_MODEL_PROVIDER}/g" settings.yaml
     sed -i "s/model: gpt-4-turbo-preview/model: ${GRAPHRAG_MODEL}/g" settings.yaml
 fi
@@ -39,4 +37,3 @@ else
 fi
 
 exec sleep infinity
-
