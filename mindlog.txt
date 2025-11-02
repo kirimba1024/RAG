@@ -1306,4 +1306,4 @@ graphrag.query(task)
 
 
 
-DOCKER_BUILDKIT=1 docker compose down -v --remove-orphans && DOCKER_BUILDKIT=1 docker compose build --no-cache && DOCKER_BUILDKIT=1 docker compose up -d
+ DOCKER_BUILDKIT=1 docker compose down -v --remove-orphans && DOCKER_BUILDKIT=1 docker compose build && DOCKER_BUILDKIT=1 docker compose up -d
