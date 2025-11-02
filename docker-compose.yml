@@ -51,4 +51,5 @@ services:
       dockerfile: ./images/graphrag/Dockerfile
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GRAPHRAG_API_KEY=${ANTHROPIC_API_KEY}
     restart: unless-stopped
