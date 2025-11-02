@@ -40,7 +40,13 @@ services:
     ports:
       - "${SOURCEGRAPH_PORT:-3080}:7080"
     volumes:
-      - ./data/sourcegraph:/var/opt/sourcegraph
+      - ./data/sourcegraph/postgresql:/var/opt/sourcegraph/postgresql
+      - ./data/sourcegraph/zoekt:/var/opt/sourcegraph/zoekt
+      - ./data/sourcegraph/blobstore:/var/opt/sourcegraph/blobstore
+      - ./data/sourcegraph/redis:/var/opt/sourcegraph/redis
+      - ./data/sourcegraph/redis-cache:/var/opt/sourcegraph/redis-cache
+      - ./data/sourcegraph/grafana:/var/opt/sourcegraph/grafana
+      - ./data/sourcegraph/prometheus:/var/opt/sourcegraph/prometheus
 
   rag-sandbox:
     build:
@@ -53,7 +59,8 @@ services:
     build:
       context: .
       dockerfile: ./images/graphrag/Dockerfile
+    volumes:
+      - ./data/graphrag/.graphrag:/app/repos/.graphrag
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - FORCE_REINDEX=${FORCE_REINDEX:-false}
     restart: unless-stopped

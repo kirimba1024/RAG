@@ -4,15 +4,9 @@ set -e
 cd /app/repos
 
 if [ -d ".graphrag" ] && [ -f ".graphrag/config.yaml" ]; then
-    if [ "$FORCE_REINDEX" != "true" ]; then
-        echo "[graphrag] Existing index found, skipping indexing."
-        echo "[graphrag] To force reindex, set FORCE_REINDEX=true"
-        echo "[graphrag] Container ready for queries. Use: docker exec -it <container> graphrag run query -t 'your question' -k 5"
-        exec sleep infinity
-    else
-        echo "[graphrag] Force reindex enabled, removing existing index..."
-        rm -rf .graphrag
-    fi
+    echo "[graphrag] Existing complete index found, skipping indexing."
+    echo "[graphrag] Container ready for queries. Use: docker exec -it <container> graphrag run query -t 'your question' -k 5"
+    exec sleep infinity
 fi
 
 echo "[graphrag] Starting GraphRAG indexing..."
@@ -22,7 +16,7 @@ if [ ! -f ".graphrag/config.yaml" ]; then
     graphrag init || true
 fi
 
-echo "[graphrag] Running index..."
+echo "[graphrag] Running index (will continue if interrupted)..."
 OUTPUT=$(graphrag run index 2>&1)
 EXIT_CODE=$?
 
@@ -35,7 +29,7 @@ if [ $EXIT_CODE -ne 0 ]; then
     exit $EXIT_CODE
 fi
 
-if [ -d ".graphrag" ]; then
+if [ -d ".graphrag" ] && [ -f ".graphrag/config.yaml" ]; then
     echo "[graphrag] Indexing completed successfully"
     echo "[graphrag] Container ready for queries. Use: docker exec -it <container> graphrag run query -t 'your question' -k 5"
 else
