@@ -16,10 +16,17 @@ if [ ! -f "settings.yaml" ]; then
     graphrag init || true
 fi
 
-echo "[graphrag] Running index (will continue if interrupted)..."
+if [ -f "settings.yaml" ]; then
+    echo "[graphrag] Configuring Anthropic Claude..."
+    GRAPHRAG_MODEL="${GRAPHRAG_MODEL:-claude-3-haiku-20240307}"
+    sed -i 's/model_provider: openai/model_provider: anthropic/g' settings.yaml
+    sed -i "s/model: gpt-4-turbo-preview/model: ${GRAPHRAG_MODEL}/g" settings.yaml
+fi
+
+echo "[graphrag] Running index..."
 graphrag index 2>&1 || {
     echo "[graphrag] Error: indexing failed. Container will stay running for manual inspection."
-    echo "[graphrag] You can exec into container and run: graphrag index"
+    echo "[graphrag] Check logs or exec into container to debug"
 }
 
 if [ -d ".graphrag" ] && [ -f ".graphrag/config.yaml" ]; then
@@ -27,7 +34,7 @@ if [ -d ".graphrag" ] && [ -f ".graphrag/config.yaml" ]; then
     echo "[graphrag] Container ready for queries. Use: docker exec -it <container> graphrag query -t 'your question' -k 5"
 else
     echo "[graphrag] Error: .graphrag directory not found after indexing"
-    exit 1
+    echo "[graphrag] Container will stay running. Check settings.yaml and try: graphrag index"
 fi
 
 exec sleep infinity
