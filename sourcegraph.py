@@ -4,8 +4,7 @@ from pathlib import Path
 
 import requests
 
-from mask import mask_secrets, check_secrets_in_text
-from utils import SOURCEGRAPH_URL, SOURCEGRAPH_TOKEN, setup_logging, clean_text
+from utils import SOURCEGRAPH_URL, SOURCEGRAPH_TOKEN, setup_logging
 
 logger = setup_logging(Path(__file__).stem)
 

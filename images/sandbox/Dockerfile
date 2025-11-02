@@ -25,7 +25,7 @@ RUN mkdir -p /app
 COPY --chmod=0755 entrypoint.sh /usr/local/bin/entrypoint.sh
 
 # Копируем репозитории в образ
-COPY repos /app
+COPY repos_safe /app
 
 # Устанавливаем рабочую директорию как корень
 WORKDIR /app
