@@ -17,9 +17,10 @@ if [ ! -f "settings.yaml" ]; then
 fi
 
 if [ -f "settings.yaml" ]; then
-    echo "[graphrag] Configuring Anthropic Claude..."
+    echo "[graphrag] Configuring model provider..."
     GRAPHRAG_MODEL="${GRAPHRAG_MODEL:-claude-3-haiku-20240307}"
-    sed -i 's/model_provider: openai/model_provider: anthropic/g' settings.yaml
+    GRAPHRAG_MODEL_PROVIDER="${GRAPHRAG_MODEL_PROVIDER:-anthropic}"
+    sed -i "s/model_provider: openai/model_provider: ${GRAPHRAG_MODEL_PROVIDER}/g" settings.yaml
     sed -i "s/model: gpt-4-turbo-preview/model: ${GRAPHRAG_MODEL}/g" settings.yaml
 fi
 

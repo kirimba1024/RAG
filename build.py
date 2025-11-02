@@ -8,7 +8,7 @@ from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 
 from utils import (
     ES_URL, ES_INDEX, ES_MANIFEST_INDEX,
-    EMBED_MODEL, list_repo_files, list_repos, setup_logging, is_ignored
+    EMBED_MODEL, REPOS_ROOT, git_blob_oid, setup_logging, is_ignored, to_posix
 )
 from sourcegraph import (
     get_file_chunks
@@ -89,26 +89,29 @@ def process_files():
             size=1000
         )
     }
-    repos = list_repos()
     processed_paths = set()
-    for repo in repos:
-        for rel_path, current_hash in list_repo_files(repo):
-            try:
-                processed_paths.add(rel_path)
-                stored_hash = manifest_hash_by_file.get(rel_path)
-                if current_hash == stored_hash and current_hash is not None:
-                    logger.debug(f"⏭️  Skipped {rel_path} (unchanged, hash={current_hash[:8]})")
-                    continue
-                if is_ignored(Path(rel_path)) or not current_hash:
-                    if stored_hash:
-                        delete_chunks(rel_path)
-                        delete_manifest(rel_path)
-                    continue
-                if stored_hash and stored_hash != current_hash:
+    for full in (f for f in REPOS_ROOT.rglob('**/*') if f.is_file()):
+        rel_path = to_posix(full.relative_to(REPOS_ROOT))
+        if is_ignored(rel_path):
+            current_hash = None
+        else:
+            current_hash = git_blob_oid(full)
+        try:
+            processed_paths.add(rel_path)
+            stored_hash = manifest_hash_by_file.get(rel_path)
+            if current_hash == stored_hash and current_hash is not None:
+                logger.debug(f"⏭️  Skipped {rel_path} (unchanged, hash={current_hash[:8]})")
+                continue
+            if not current_hash:
+                if stored_hash:
                     delete_chunks(rel_path)
-                add_file(rel_path, current_hash)
-            except Exception as e:
-                logger.error(f"Failed to process file {rel_path}: {e}")
+                    delete_manifest(rel_path)
+                continue
+            if stored_hash and stored_hash != current_hash:
+                delete_chunks(rel_path)
+            add_file(rel_path, current_hash)
+        except Exception as e:
+            logger.error(f"Failed to process file {rel_path}: {e}")
     for rel_path in manifest_hash_by_file.keys():
         if rel_path not in processed_paths:
             try:

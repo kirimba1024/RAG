@@ -35,6 +35,7 @@ ES_URL = f"http://{ES_HOST}:{ES_PORT}"
 
 SOURCEGRAPH_URL = os.getenv("SOURCEGRAPH_URL", "http://localhost:3080")
 SOURCEGRAPH_TOKEN = os.getenv("SOURCEGRAPH_TOKEN", "")
+SOURCEGRAPH_REPO_NAME = os.getenv("SOURCEGRAPH_REPO_NAME", "repos")
 
 REPOS_ROOT = Path("repos").resolve()
 REPOS_SAFE_ROOT = Path("repos_safe").resolve()
@@ -114,11 +115,8 @@ def file_hash(path, algo="sha256"):
 IGNORE_FILE = Path(".ignore")
 IGNORE_SPEC = PathSpec.from_lines("gitwildmatch", IGNORE_FILE.read_text(encoding="utf-8").splitlines())
 
-def is_ignored(rel_path: Path) -> bool:
-    return IGNORE_SPEC.match_file(to_posix(rel_path))
-
-def list_repos() -> list[str]:
-    return [p.name for p in REPOS_ROOT.iterdir() if p.is_dir() and (p / ".git").exists()]
+def is_ignored(rel_path: str) -> bool:
+    return IGNORE_SPEC.match_file(rel_path)
 
 def git_blob_oid(path: Path) -> str:
     data = path.read_bytes()
@@ -156,12 +154,3 @@ def extract_binary_content(path: Path):
         img = Image.open(BytesIO(file_bytes))
         return pytesseract.image_to_string(img, lang="rus+eng")
     return None
-
-def list_repo_files(repo: str):
-    repo_root = REPOS_ROOT / repo
-    for root, _, files in os.walk(repo_root):
-        for name in files:
-            full = Path(root) / name
-            rel_in_repo = full.relative_to(repo_root).as_posix()
-            rel_path = f"{repo}/{rel_in_repo}"
-            yield rel_path, git_blob_oid(full)

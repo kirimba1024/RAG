@@ -1,7 +1,6 @@
 import docker
 
 from retriever import retrieve_fusion_nodes, get_code_stats
-from utils import REPOS_ROOT, to_posix
 
 
 def main_search(question: str, path_prefix: str, top_n: int) -> str:

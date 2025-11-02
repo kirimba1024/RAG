@@ -4,7 +4,7 @@ from pathlib import Path
 
 import requests
 
-from utils import SOURCEGRAPH_URL, SOURCEGRAPH_TOKEN, setup_logging
+from utils import SOURCEGRAPH_URL, SOURCEGRAPH_TOKEN, SOURCEGRAPH_REPO_NAME, setup_logging
 
 logger = setup_logging(Path(__file__).stem)
 
@@ -24,34 +24,27 @@ def _execute_graphql(query: str, variables: dict | None = None) -> dict:
     resp.raise_for_status()
     return resp.json()
 
-def _split_file_path(rel_path: str) -> tuple[str, str]:
-    parts = rel_path.split("/", 1)
-    if len(parts) < 2:
-        raise ValueError(f"Invalid file path format: {rel_path}. Expected format: repo/path")
-    return parts[0], parts[1]
-
 def get_file_chunks(rel_path: str) -> list[dict]:
-    repo, path = _split_file_path(rel_path)
-    gql = """
-    query FileChunks($repo: String!, $path: String!, $rev: String!) {
-      repository(name: $repo) {
-        commit(rev: $rev) {
-          file(path: $path) {
+    gql = f"""
+    query FileChunks($path: String!) {{
+      repository(name: "{SOURCEGRAPH_REPO_NAME}") {{
+        commit(rev: HEAD) {{
+          file(path: $path) {{
             content
             binary
-            symbols(first: 2000) {
-              nodes {
+            symbols(first: 2000) {{
+              nodes {{
                 name
                 kind
-                range { start { line } end { line } }
-              }
-            }
-          }
-        }
-      }
-    }
+                range {{ start {{ line }} end {{ line }} }}
+              }}
+            }}
+          }}
+        }}
+      }}
+    }}
     """
-    result = _execute_graphql(gql, {"repo": repo, "path": path, "rev": "HEAD"})
+    result = _execute_graphql(gql, {"path": rel_path})
     file_data = result["data"]["repository"]["commit"]["file"]
     if file_data.get("binary"):
         raise Exception(f"Бинарный файл {rel_path} не обрабатывается")
@@ -88,11 +81,10 @@ def get_file_chunks(rel_path: str) -> list[dict]:
 
 def sg_search(query: str, path_prefix: str, limit: int) -> str:
     path_prefix = path_prefix.lstrip("/").lstrip(".")
-    repo, *rest = path_prefix.split("/", 1)
-    filters = [f"repo:{repo}@HEAD"]
-    if rest:
-        filters.append(f"file:{rest[0]}")
-    search_query = f"{' '.join(filters)} {query}"
+    if path_prefix:
+        search_query = f"file:{path_prefix} {query}"
+    else:
+        search_query = query
     gql_query = """
     query SearchResults($query: String!, $limit: Int!) {
       search(query: $query, first: $limit) {
@@ -115,12 +107,10 @@ def sg_search(query: str, path_prefix: str, limit: int) -> str:
 
 def sg_codeintel(mode: str, symbol: str, path_prefix: str) -> str:
     path_prefix = path_prefix.lstrip("/").lstrip(".")
-    repo, *rest = path_prefix.split("/", 1)
-    filters = [f"repo:{repo}@HEAD"]
-    if rest:
-        filters.append(f"file:{rest[0]}")
-    query_filter = " ".join(filters)
-    symbol_query = f"{query_filter} {symbol}"
+    if path_prefix:
+        symbol_query = f"file:{path_prefix} {symbol}"
+    else:
+        symbol_query = symbol
     gql_query_map = {
         "definitions": """
           query Definitions($symbol: String!) {
@@ -162,13 +152,12 @@ def sg_codeintel(mode: str, symbol: str, path_prefix: str) -> str:
     return f"Обработан режим: {mode}"
 
 def sg_blob(rel_path: str, start_line: int, end_line: int) -> str:
-    gql_query = """
-    query BlobContent($repo: String!, $path: String!, $rev: String!) {
-      repository(name: $repo) { commit(rev: $rev) { file(path: $path) { content binary } } }
-    }
+    gql_query = f"""
+    query BlobContent($path: String!) {{
+      repository(name: "{SOURCEGRAPH_REPO_NAME}") {{ commit(rev: HEAD) {{ file(path: $path) {{ content binary }} }} }}
+    }}
     """
-    repo, file_path = rel_path.split("/", 1)
-    result = _execute_graphql(gql_query, {"repo": repo, "path": file_path, "rev": "HEAD"})
+    result = _execute_graphql(gql_query, {"path": rel_path})
     file_data = result["data"]["repository"]["commit"]["file"]
     if file_data["binary"]:
         return f"Файл {rel_path} является бинарным"
