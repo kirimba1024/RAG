@@ -37,6 +37,11 @@ SOURCEGRAPH_URL = os.getenv("SOURCEGRAPH_URL", "http://localhost:3080")
 SOURCEGRAPH_TOKEN = os.getenv("SOURCEGRAPH_TOKEN", "")
 SOURCEGRAPH_REPO_NAME = os.getenv("SOURCEGRAPH_REPO_NAME", "repos")
 
+SANDBOX_CONTAINER_NAME = os.getenv("SANDBOX_CONTAINER_NAME", "rag-assistant-rag-sandbox-1")
+GRAPHRAG_CONTAINER_NAME = os.getenv("GRAPHRAG_CONTAINER_NAME", "rag-assistant-graphrag-1")
+SOURCEGRAPH_CONTAINER_NAME = os.getenv("SOURCEGRAPH_CONTAINER_NAME", "rag-assistant-sourcegraph-1")
+ELASTICSEARCH_CONTAINER_NAME = os.getenv("ELASTICSEARCH_CONTAINER_NAME", "rag-assistant-elasticsearch-1")
+
 REPOS_ROOT = Path("repos").resolve()
 REPOS_SAFE_ROOT = Path("repos_safe").resolve()
 

@@ -3,7 +3,7 @@ import re
 import shutil
 import mimetypes
 import subprocess
-from utils import clean_text, extract_binary_content, setup_logging, REPOS_ROOT, REPOS_SAFE_ROOT, is_ignored
+from utils import clean_text, extract_binary_content, setup_logging, REPOS_ROOT, REPOS_SAFE_ROOT, is_ignored, to_posix
 
 logger = setup_logging(Path(__file__).stem)
 
@@ -144,13 +144,11 @@ def mask_secrets(text: str) -> str:
 
 
 def mask_directory(src_dir: Path, dst_dir: Path):
-    for item in src_dir.rglob('*'):
-        if item.is_dir():
-            continue
-        rel_path = item.relative_to(src_dir)
+    for item in (f for f in src_dir.rglob('**/*') if f.is_file()):
+        rel_path = to_posix(item.relative_to(src_dir))
         if is_ignored(rel_path):
             continue
-        dst_path = dst_dir / rel_path
+        dst_path = dst_dir / item.relative_to(src_dir)
         dst_path.parent.mkdir(parents=True, exist_ok=True)
         try:
             content = item.read_text(encoding='utf-8')

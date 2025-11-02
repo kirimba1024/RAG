@@ -1,6 +1,7 @@
 import docker
 
 from retriever import retrieve_fusion_nodes, get_code_stats
+from utils import SANDBOX_CONTAINER_NAME, GRAPHRAG_CONTAINER_NAME
 
 
 def main_search(question: str, path_prefix: str, top_n: int) -> str:
@@ -19,7 +20,7 @@ def code_stats(path_prefix: str) -> str:
 
 def execute_command(command: str) -> str:
     client = docker.from_env()
-    container = client.containers.get("rag-assistant-rag-sandbox-1")
+    container = client.containers.get(SANDBOX_CONTAINER_NAME)
     result = container.exec_run(
         cmd=["timeout", "30", "sh", "-c", command],
         user="nobody"
@@ -28,7 +29,7 @@ def execute_command(command: str) -> str:
 
 def graphrag_query(task: str, root: str, k: int) -> str:
     client = docker.from_env()
-    container = client.containers.get("rag-assistant-graphrag-1")
+    container = client.containers.get(GRAPHRAG_CONTAINER_NAME)
     workdir = "/app/repos" + (f"/{root}" if root else "")
     result = container.exec_run(
         cmd=["graphrag", "query", "-t", task, "-k", str(k)],
