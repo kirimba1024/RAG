@@ -9,5 +9,6 @@ COPY images/sourcegraph/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 COPY repos_safe /var/opt/sourcegraph/monorepo
+COPY images/sourcegraph/extsvc.json /etc/sourcegraph/extsvc.json
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

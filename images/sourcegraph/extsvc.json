@@ -1,0 +1,8 @@
+[
+  {
+    "kind": "OTHER",
+    "displayName": "Local monorepo",
+    "config": "{\"url\": \"file:///var/opt/sourcegraph/monorepo\", \"repos\": [\"monorepo\"]}"
+  }
+]
+
