@@ -33,7 +33,7 @@ ES_INDEX = os.getenv("ES_INDEX", "rag")
 ES_MANIFEST_INDEX = os.getenv("ES_MANIFEST_INDEX", "manifest")
 ES_URL = f"http://{ES_HOST}:{ES_PORT}"
 
-SOURCEGRAPH_URL = os.getenv("SOURCEGRAPH_URL", "http://localhost:3080")
+SOURCEGRAPH_URL = os.getenv("SOURCEGRAPH_URL", "https://sg.localhost")
 SOURCEGRAPH_TOKEN = os.getenv("SOURCEGRAPH_TOKEN", "")
 SOURCEGRAPH_REPO_NAME = os.getenv("SOURCEGRAPH_REPO_NAME", "monorepo")
 

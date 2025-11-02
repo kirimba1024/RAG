@@ -35,8 +35,19 @@ services:
       - SOURCEGRAPH_SECRET_KEY=${SOURCEGRAPH_SECRET_KEY:-secret-key}
       - SITE_CONFIG_ALLOW_EDITS=true
       - EXTSVC_CONFIG_FILE=/etc/sourcegraph/extsvc.json
+      - SOURCEGRAPH_EXTERNAL_URL=${SOURCEGRAPH_EXTERNAL_URL:-https://sg.localhost}
+
+  caddy:
+    build:
+      context: .
+      dockerfile: ./images/caddy/Dockerfile
+    depends_on:
+      - sourcegraph
     ports:
-      - "${SOURCEGRAPH_PORT:-3080}:7080"
+      - "443:443"
+      - "80:80"
+    networks:
+      - default
 
   rag-sandbox:
     build:
