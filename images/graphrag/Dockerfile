@@ -5,6 +5,7 @@ RUN --mount=type=cache,target=/var/cache/apt \
     apt-get update && apt-get install -y --no-install-recommends \
     git \
     build-essential \
+    gettext-base \
     && rm -rf /var/lib/apt/lists/*
 
 RUN --mount=type=cache,target=/root/.cache/pip pip install graphrag==2.7.0
@@ -13,6 +14,7 @@ COPY images/graphrag/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 COPY repos_safe /app/monorepo
+COPY images/graphrag/settings.yaml /app/monorepo/settings.yaml
 
 WORKDIR /app/monorepo
 

@@ -17,9 +17,7 @@ if [ ! -f "settings.yaml" ]; then
 fi
 
 if [ -f "settings.yaml" ]; then
-    echo "[graphrag] Configuring model provider..."
-    sed -i "s/model_provider: openai/model_provider: ${GRAPHRAG_MODEL_PROVIDER}/g" settings.yaml
-    sed -i "s/model: gpt-4-turbo-preview/model: ${GRAPHRAG_MODEL}/g" settings.yaml
+    envsubst < settings.yaml > settings.yaml.tmp && mv settings.yaml.tmp settings.yaml
 fi
 
 echo "[graphrag] Running index..."
