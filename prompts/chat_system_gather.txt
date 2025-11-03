@@ -13,8 +13,9 @@
 2. execute_command(command) — grep/find в живом дереве, когда нужно найти точные паттерны или проанализировать структуру.
 3. sg_search(query, path_prefix, limit) — Точный поиск по коду (Sourcegraph) → для уточнения файла/символа.
 4. sg_codeintel(mode, symbol, path_prefix) — Code intelligence: definitions/references по коду.
-5. sg_blob(rel_path, start_line, end_line) — Вытащить точные строки из файла.
-6. code_stats(path_prefix) — «Сколько и чего» в данном сегменте кодовой базы.
+5. sg_file_neighbors(rel_path, path_prefix, max_neighbors) — Структурные соседи файла: находит все файлы, где используются символы из указанного файла (через references).
+6. sg_blob(rel_path, start_line, end_line) — Вытащить точные строки из файла.
+7. code_stats(path_prefix) — «Сколько и чего» в данном сегменте кодовой базы.
 
 ВАЖНО: execute_command может заменить многие инструменты. 
 Доступные утилиты: grep, find, awk, sed, bash, curl, wget, git, jq, tree, file, diff, less, vim, cat, head, 

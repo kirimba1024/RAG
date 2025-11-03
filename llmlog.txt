@@ -81,3 +81,5 @@
 
 Осталось: Elasticsearch (гибридный поиск), Sourcegraph (структурный анализ), Docker Sandbox (безопасное выполнение команд).
 
+- Добавлен инструмент sg_file_neighbors: находит структурных соседей файла через references символов (sourcegraph.py); добавлен в TOOLS_SCHEMA (tools.py) и TOOLS_MAP (chat.py); описан в промпте chat_system_gather.txt; обновлен README.MD с примером использования.
+

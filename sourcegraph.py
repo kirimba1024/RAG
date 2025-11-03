@@ -174,3 +174,57 @@ def sg_blob(rel_path: str, start_line: int, end_line: int) -> str:
     for i, line in enumerate(selected, start=start_line):
         out.append(f"{i:4d} | {line}")
     return "\n".join(out)
+
+def sg_file_neighbors(rel_path: str, path_prefix: str, max_neighbors: int) -> str:
+    path_prefix = path_prefix.lstrip("/").lstrip(".")
+    gql_symbols = f"""
+    query FileSymbols($path: String!) {{
+      repository(name: "{SOURCEGRAPH_REPO_NAME}") {{
+        commit(rev: "HEAD") {{
+          blob(path: $path) {{
+            symbols(first: 50) {{
+              nodes {{
+                name
+              }}
+            }}
+          }}
+        }}
+      }}
+    }}
+    """
+    symbols_result = _execute_graphql(gql_symbols, {"path": rel_path})
+    blob_data = symbols_result["data"]["repository"]["commit"].get("blob")
+    if not blob_data:
+        return f"Файл {rel_path} не найден или бинарный"
+    symbols = blob_data.get("symbols", {}).get("nodes", [])
+    if not symbols:
+        return f"Файл {rel_path} не содержит символов"
+    neighbor_files = set()
+    for symbol_node in symbols:
+        symbol_name = symbol_node.get("name")
+        if not symbol_name:
+            continue
+        search_query = f"type:symbol {symbol_name}" + (f" file:{path_prefix}" if path_prefix else "")
+        gql_refs = """
+        query SymbolRefs($query: String!) {
+          search(query: $query) {
+            results { results { ... on FileMatch { file { path } } } }
+          }
+        }
+        """
+        refs_result = _execute_graphql(gql_refs, {"query": search_query})
+        if "errors" in refs_result:
+            continue
+        matches = refs_result["data"]["search"]["results"]["results"]
+        for m in matches:
+            file_path = m["file"]["path"]
+            if file_path != rel_path:
+                neighbor_files.add(file_path)
+        if len(neighbor_files) >= max_neighbors:
+            break
+    if not neighbor_files:
+        return f"Соседние файлы для {rel_path} не найдены"
+    out = [f"🔗 Соседние файлы для {rel_path}:\n"]
+    for neighbor_path in sorted(neighbor_files)[:max_neighbors]:
+        out.append(f"  📄 {neighbor_path}")
+    return "\n".join(out)

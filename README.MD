@@ -45,7 +45,7 @@
 - `build.py` — инкрементальная индексация repos_safe/ в ES через Sourcegraph
 - `chat.py` — Gradio интерфейс с двухэтапным циклом (GATHER + ANSWER)
 - `retriever.py` — гибридный поиск ES (kNN+BM25+reranking) + статистика
-- `tools.py` — инструменты для Claude (main_search, sg_search, sg_codeintel, sg_blob, execute_command, code_stats)
+- `tools.py` — инструменты для Claude (main_search, sg_search, sg_codeintel, sg_file_neighbors, sg_blob, execute_command, code_stats)
 - `sourcegraph.py` — GraphQL клиент для Sourcegraph API
 - `utils.py` — конфигурация и вспомогательные функции
 - `mask.py` — маскировка секретов при индексации
@@ -181,19 +181,24 @@ pip install -r requirements.txt -c constraints.txt
    mode="callers", symbol="authenticate"
    ```
 
-4. **sg_blob** — Точный фрагмент кода по строкам
+4. **sg_file_neighbors** — Структурные соседи файла (находит файлы, где используются символы из указанного файла)
+   ```python
+   rel_path="src/main/java/UserService.java", path_prefix="src", max_neighbors=10
+   ```
+
+5. **sg_blob** — Точный фрагмент кода по строкам
    ```python
    rel_path="src/main/java/UserService.java", start_line=10, end_line=25
    ```
 
-5. **execute_command** — безопасное выполнение команд в Docker sandbox
+6. **execute_command** — безопасное выполнение команд в Docker sandbox
    ```bash
    grep -rn "class.*Service" . --include="*.java"
    find . -name "*.py" -exec wc -l {} + | sort -nr
    cat src/main/java/com/example/Service.java
    ```
 
-6. **code_stats** — базовая статистика кодовой базы
+7. **code_stats** — базовая статистика кодовой базы
    ```python
    code_stats(path_prefix="src")  # файлы, чанки, языки, размеры
    ```
@@ -219,6 +224,12 @@ sg_codeintel(mode="callers", symbol="authenticate")
 
 # Кого вызывает метод
 sg_codeintel(mode="callees", symbol="validateUser")
+```
+
+**Структурные соседи файла:**
+```python
+# Найти все файлы, где используются символы из UserService.java
+sg_file_neighbors(rel_path="src/main/java/UserService.java", path_prefix="src", max_neighbors=15)
 ```
 
 **Точные фрагменты кода:**

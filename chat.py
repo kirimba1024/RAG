@@ -11,7 +11,7 @@ from tools import (
     code_stats,
     execute_command,
 )
-from sourcegraph import sg_search, sg_codeintel, sg_blob
+from sourcegraph import sg_search, sg_codeintel, sg_blob, sg_file_neighbors
 
 logger = setup_logging(Path(__file__).stem)
 
@@ -28,6 +28,7 @@ TOOLS_MAP = {
     "sg_search": lambda p: sg_search(p["query"], p["path_prefix"], p["limit"]),
     "sg_codeintel": lambda p: sg_codeintel(p["mode"], p["symbol"], p["path_prefix"]),
     "sg_blob": lambda p: sg_blob(p["rel_path"], p["start_line"], p["end_line"]),
+    "sg_file_neighbors": lambda p: sg_file_neighbors(p["rel_path"], p["path_prefix"], p["max_neighbors"]),
 }
 
 def system_block(text):

@@ -2,6 +2,7 @@ import docker
 
 from retriever import retrieve_fusion_nodes, get_code_stats
 from utils import SANDBOX_CONTAINER_NAME
+from sourcegraph import sg_file_neighbors
 
 
 def main_search(question: str, path_prefix: str, top_n: int) -> str:
@@ -100,6 +101,19 @@ TOOLS_SCHEMA = [
                 "end_line": {"type": "integer", "description": "Конечная строка"}
             },
             "required": ["rel_path", "start_line", "end_line"]
+        }
+    },
+    {
+        "name": "sg_file_neighbors",
+        "description": "Sourcegraph - соседние файлы через references символов",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "rel_path": {"type": "string", "description": "Относительный путь к файлу"},
+                "path_prefix": {"type": "string", "description": "Префикс пути (пустая строка если не фильтруем)"},
+                "max_neighbors": {"type": "integer", "description": "Максимальное количество соседних файлов"}
+            },
+            "required": ["rel_path", "path_prefix", "max_neighbors"]
         }
     }
 ]
