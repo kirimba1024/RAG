@@ -83,3 +83,29 @@
 
 - Добавлен инструмент sg_file_neighbors: находит структурных соседей файла через references символов (sourcegraph.py); добавлен в TOOLS_SCHEMA (tools.py) и TOOLS_MAP (chat.py); описан в промпте chat_system_gather.txt; обновлен README.MD с примером использования.
 
+
+- [ПРОБЛЕМА ИНДЕКСАЦИИ SOURCEGRAPH] Найдено: Sourcegraph возвращает одинаковые символы для всех файлов (включая YAML). Это указывает на отсутствие корректной SCIP-индексации - используется один общий индекс вместо отдельных для каждого файла. Не влияет на работу sg_file_neighbors (функция корректно обрабатывает данные API), но результаты могут быть неточными для файлов без реальных символов.
+
+=== ОТКАЗ ОТ SOURCEGRAPH ===
+
+Причина отказа: Sourcegraph слишком тяжеловесный, мало манёвренный и мало полезный для нашего кейса.
+
+Проблемы:
+- SCIP индексация требует конфигурации проектов для КАЖДОГО языка (pom.xml, build.gradle, package.json, go.mod и т.д.)
+- В монорепо с перемешанными файлами без структуры проектов Sourcegraph падает в fallback (ctags), возвращая одинаковые символы для всех файлов
+- Precise-индексаторы не могут автоматически определить структуру в перемешанных файлах
+- Требует настройки токенов, сложная конфигурация, большой overhead
+
+Решение: полное удаление Sourcegraph из проекта.
+
+Что удалено:
+- Сервис sourcegraph из docker-compose.yml
+- Сервис caddy из docker-compose.yml (использовался только для Sourcegraph)
+- Директория images/sourcegraph/ (Dockerfile, entrypoint.sh, index.sh, extsvc.json)
+- Файл sourcegraph.py со всеми функциями (sg_search, sg_codeintel, sg_blob, sg_file_neighbors)
+- Инструменты sg_* из tools.py и TOOLS_SCHEMA
+- TOOLS_MAP маппинги для sg_* из chat.py
+- Упоминания Sourcegraph из промптов (chat_system_gather.txt)
+- Все упоминания Sourcegraph из README.MD
+- Переменные SOURCEGRAPH_* из utils.py
+- Переменные SOURCEGRAPH_* из .env примеров

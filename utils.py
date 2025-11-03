@@ -33,12 +33,7 @@ ES_INDEX = os.getenv("ES_INDEX", "rag")
 ES_MANIFEST_INDEX = os.getenv("ES_MANIFEST_INDEX", "manifest")
 ES_URL = f"http://{ES_HOST}:{ES_PORT}"
 
-SOURCEGRAPH_URL = os.getenv("SOURCEGRAPH_URL", "https://sg.localhost")
-SOURCEGRAPH_TOKEN = os.getenv("SOURCEGRAPH_TOKEN", "")
-SOURCEGRAPH_REPO_NAME = os.getenv("SOURCEGRAPH_REPO_NAME", "monorepo")
-
 SANDBOX_CONTAINER_NAME = os.getenv("SANDBOX_CONTAINER_NAME", "rag-assistant-rag-sandbox-1")
-SOURCEGRAPH_CONTAINER_NAME = os.getenv("SOURCEGRAPH_CONTAINER_NAME", "rag-assistant-sourcegraph-1")
 ELASTICSEARCH_CONTAINER_NAME = os.getenv("ELASTICSEARCH_CONTAINER_NAME", "rag-assistant-elasticsearch-1")
 
 REPOS_ROOT = Path("repos").resolve()

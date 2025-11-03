@@ -23,32 +23,6 @@ services:
     depends_on:
       - elasticsearch
 
-  sourcegraph:
-    build:
-      context: .
-      dockerfile: ./images/sourcegraph/Dockerfile
-    platform: linux/amd64
-    container_name: ${SOURCEGRAPH_CONTAINER_NAME:-rag-assistant-sourcegraph-1}
-    restart: unless-stopped
-    environment:
-      - SOURCEGRAPH_DB_PASSWORD=${SOURCEGRAPH_DB_PASSWORD:-password}
-      - SOURCEGRAPH_SECRET_KEY=${SOURCEGRAPH_SECRET_KEY:-secret-key}
-      - SITE_CONFIG_ALLOW_EDITS=true
-      - EXTSVC_CONFIG_FILE=/etc/sourcegraph/extsvc.json
-      - SOURCEGRAPH_EXTERNAL_URL=${SOURCEGRAPH_EXTERNAL_URL:-https://sg.localhost}
-
-  caddy:
-    build:
-      context: .
-      dockerfile: ./images/caddy/Dockerfile
-    depends_on:
-      - sourcegraph
-    ports:
-      - "443:443"
-      - "80:80"
-    networks:
-      - default
-
   rag-sandbox:
     build:
       context: .

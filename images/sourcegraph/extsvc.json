@@ -1,9 +1,0 @@
-{
-  "OTHER": [
-    {
-      "url": "http://127.0.0.1:3434",
-      "repos": ["repos/.git"],
-      "repositoryPathPattern": "monorepo"
-    }
-  ]
-}

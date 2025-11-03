@@ -10,15 +10,31 @@ from utils import (
     ES_URL, ES_INDEX, ES_MANIFEST_INDEX,
     EMBED_MODEL, REPOS_SAFE_ROOT, git_blob_oid, setup_logging, is_ignored, to_posix
 )
-from sourcegraph import (
-    get_file_chunks
-)
 
 logger = setup_logging(Path(__file__).stem)
 
 ES = Elasticsearch(ES_URL, request_timeout=30, max_retries=3, retry_on_timeout=True)
 
 Settings.embed_model = HuggingFaceEmbedding(EMBED_MODEL, normalize=True)
+
+def get_file_chunks(rel_path):
+    full = REPOS_SAFE_ROOT / rel_path
+    if not full.exists():
+        return []
+    content = full.read_text(encoding='utf-8', errors='ignore')
+    lines = content.split('\n')
+    chunks = []
+    chunk_size = 100
+    for i in range(0, len(lines), chunk_size):
+        chunk_lines = lines[i:i+chunk_size]
+        chunk_text = '\n'.join(chunk_lines)
+        chunks.append({
+            "text": chunk_text,
+            "start_line": i + 1,
+            "end_line": min(i + chunk_size, len(lines)),
+            "kind": "text"
+        })
+    return chunks
 
 def upsert_manifest(rel_path, new_hash):
     ES.index(
