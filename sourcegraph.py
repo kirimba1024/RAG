@@ -89,6 +89,7 @@ def get_file_chunks(rel_path: str) -> list[dict]:
                     })
         if chunks:
             return chunks
+    logger.warning(f"No symbols found for {rel_path}, using chunking")
     start_line = 1
     while start_line <= len(lines):
         end_line = min(start_line + CHUNK_SIZE - 1, len(lines))
