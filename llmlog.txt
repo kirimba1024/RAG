@@ -65,3 +65,19 @@
 - repos/.git - это реальный путь который отдаёт src serve-git
 - repositoryPathPattern: "monorepo" - только для отображения в UI, не меняет URL клонирования
 
+=== Удаление GraphRAG из проекта ===
+
+Причина: GraphRAG не поддерживает локальные embedding модели (BAAI/bge-m3) - требует API ключи даже для HuggingFace моделей, сложная настройка через litellm, отсутствует инкрементальность индексации, проблемы с совместимостью моделей.
+
+Что удалено:
+- Сервис graphrag из docker-compose.yml
+- Директория images/graphrag/ (Dockerfile, entrypoint.sh, settings.yaml)
+- Функция graphrag_query из tools.py
+- Инструмент graphrag_query из TOOLS_SCHEMA
+- Переменная GRAPHRAG_CONTAINER_NAME из utils.py
+- Импорты и использование graphrag_query из chat.py
+- Упоминание graphrag_query из промпта chat_system_gather.txt
+- Все упоминания GraphRAG из README.MD (архитектура, инструменты, описание)
+
+Осталось: Elasticsearch (гибридный поиск), Sourcegraph (структурный анализ), Docker Sandbox (безопасное выполнение команд).
+
