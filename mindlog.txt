@@ -1337,3 +1337,315 @@ Chunk spans + titles
 Likely queries (3–5 коротких формулировок)
 “Как настроить X?”, “Где валидируется Y?”, “Как вызвать API Z?”
 Зачем: идеальные фразы для query-expansion/перерасстановки весов.
+
+
+Коротко: **класть всё прямо в индекс чанков** — да, но не “в произвольный мешок `metadata`”, а как **жёстко прописанные поля** (стандартная схема). В Elasticsearch “метаданные” — это такие же поля документа; разница лишь в том, **задали ли вы им типы в mapping**. Если хотите, чтобы поиск был точный и быстрый, — делайте их **первоклассными полями** (или в объекте `meta.*` с фиксированной схемой), а не динамическим JSON.
+
+## Почему не просто `metadata: {...}` без схемы
+
+* динамический JSON ломает консистентность (LLM иногда меняет ключи);
+* хуже фильтры/агрегации и контроль типов;
+* дороже миграции (случайные поля множат mapping).
+
+## Как лучше стандартизировать (chunk-doc “толстый”)
+
+Держите всё в **том же документе чанка**, где уже есть `text` и `embedding`:
+
+* Лёгкие поля — **всегда присутствуют**, маленькие, пригодные для фильтрации/бустов:
+
+  * `doc_id` (keyword), `chunk_id` (int), `start_line`, `end_line` (int), `lang` (keyword)
+  * `chunk_title` (keyword) — 1 короткая фраза
+  * `chunk_summary` (text, а можно отключить index если не нужно искать)
+  * `tags` (keyword[]) — domain/layer/framework
+  * `entities` (keyword[]) — до 20 нормализованных ключей
+  * `public_symbols` (nested: name/kind/signature — если хочется точнее матчить API)
+  * `io` (keyword[]) — простые маркеры входов/выходов: таблицы/топики/URLs/feature-flags
+  * `security_flags` (keyword[]) — “secrets”, “pii”, “crypto” (булевы признаками)
+  * `likely_queries` (keyword[]) — 3–5 коротких фраз
+  * служебные: `llm_version` (keyword), `updated_at` (date), `file_hash` (keyword)
+* Тяжёлые/редко используемые — **индексируйте экономно**:
+
+  * длинные опции/объяснения → хранить (`"index": false`) или вовсе не хранить
+  * большие списки (например, “соседи-чанки”) **не хранить** в документе — считать онлайн.
+
+> Итог: концептуально это “метаданные”, но **реализуйте как нормальные поля** (или `meta.*` с фиксированным mapping), чтобы ими можно было быстро фильтровать/бустить.
+
+## Почему держать всё в одном индексе чанков, а не рядом
+
+* не нужен “джойн” между индексами;
+* один `search` отдаёт и контент, и все “факты” для бустов/фильтров;
+* векторный поиск не страдает от пары десятков небольших полей.
+
+## Практика, чтобы индекс не раздулся
+
+* ограничьте длину `chunk_summary` (например, ≤ 500–800 символов);
+* `entities/tags/symbols` — жёсткий верхний лимит (20/10/20);
+* `public_symbols` делайте `nested` только если реально нужны запросы вида “name=X И kind=function”;
+* всё, что не ищете по полнотексту, делайте `keyword` (дёшево) или `index:false`;
+* версионируйте извлечение (`llm_version`) и переиндексируйте **только** при смене версии/хэша.
+
+## Что точно хранить (минимальный must-have)
+
+Если хочется совсем компактно, но полезно:
+
+* `chunk_title` (keyword)
+* `entities` (keyword[])
+* `tags` (keyword[])
+* `public_symbols` (nested: name/kind)
+* `chunk_summary` (text, короткий)
+* `llm_version`, `updated_at`
+
+Этого уже хватает, чтобы:
+
+* **бустить** результаты по совпадению сущностей/тегов,
+* быстро **фильтровать** по слою/домену,
+* давать хорошие сниппеты/заголовки,
+* подключать **расширение соседями** по `entities` без отдельного графа.
+
+## Вывод
+
+Да, это “метаданные” по смыслу, но **храните их как стандартизированные поля** в документе чанка (или в `meta.*` с фиксированным mapping), а не как свободный JSON. Так вы получаете:
+
+* стабильную схему,
+* быстрые фильтры/бусты,
+* простое расширение соседями,
+* отсутствие лишних индексов/джойнов.
+
+
+
+Использовать tools в claude чтобы он вызвал такие инструменты по каждому блоку для описания каждого логического блока
+предвариталеьно попросив его разбить весь файл на логические (семантические) блоки
+
+
+
+Идея норм: сделать разметку и обогащение **как цепочку tool-вызовов**, где Claude сам оркестрирует. Чтобы это было и точным, и недорогим, держись такого мини-дизайна.
+
+# Что именно дать Claude как tools
+
+**Супер-минимум (4 инструмента):**
+
+1. `fs.read_file(path)` → `{text, lang, size}`
+2. `blocks.split({text})` → `{blocks:[{start_line,end_line,title,kind}]}`
+
+   * Инварианты: без перекрытий, покрывают только то, что в файле; ID блока = `doc_id:start-end`.
+3. `blocks.describe({block_text, lang})` → строгий JSON c *фиксированными полями*:
+
+   * `chunk_title` (≤80 симв.), `chunk_summary` (≤600),
+   * `tags[]` (≤10), `entities[]` (≤20, нормализованы),
+   * `public_symbols[]` (name, kind, signature, ≤20),
+   * `io[]` (таблицы/топики/URL/flags, ≤20),
+   * `security_flags[]` (из набора: `["pii","secrets","crypto"]`),
+   * `likely_queries[]` (≤5 коротких).
+4. `index.upsert_chunks({doc_id, commit, blocks:[…]})` → пишет в ES (те же поля как **первоклассные**).
+
+> Никаких “произвольных metadata”. Все поля стандартизированы в mapping индекса чанков.
+
+# Как Claude должен действовать (минимальный протокол)
+
+1. План (внутренний): «прочитаю файл → разобью → опишу блоки батчами → закрошу результат».
+2. `fs.read_file` (один вызов).
+3. `blocks.split` (один вызов).
+4. Цикл по блокам **батчами** (например, по 5–8 блоков за вызов):
+
+   * для каждого блока: `blocks.describe` (или один вызов, если tool принимает массив блоков).
+   * важное правило для LLM: **анализ только по тексту блока**; не фантазировать про проект в целом; не выводить ничего за рамки блока; если нет данных — пустой список/`""`.
+5. `index.upsert_chunks` — единый апсертающий вызов на весь файл (или по батчу, если файл огромный).
+
+# Почему так лучше, чем «по одному блоку — один tool»
+
+* Меньше round-trips → ниже латентность и риски по rate-limit.
+* Простая идемпотентность: `doc_id` + `start-end` + `commit` — стабильный ключ.
+* Контролируемый бюджет: лимиты по длинам полей и количеству элементов.
+
+# Важные guardrails (чтобы качество было «сразу по делу»)
+
+* Температура 0, строгий JSON, **валидация схемы** в tool (не пускай в индекс, если поле выбилось из лимитов).
+* Жёсткая нормализация `entities` (lowercase/kebab, только `[a-z0-9._:/-]`, дедуп).
+* Фразы в `likely_queries` — 3–5 очень коротких, без местоимений.
+* Если блок > N строк (например, 250), разреши `blocks.split` вернуть подподы-блоки — Claude всё равно вызовет `describe` батчами.
+* `llm_version` в каждом документе (обновляешь — переиндексация только изменившихся).
+
+# Индексация в ES (смысл)
+
+* Всё это — **полноценные поля** в документе чанка (а не мешок dynamic `metadata`).
+* Это даёт: быстрые `terms/terms_set` по `entities/tags`, бусты на `public_symbols.name`, фильтры по `security_flags`, и т.д.
+* Вектор уже есть; file-level эмбеддинг можно не хранить — по необходимости добавишь позже.
+
+# Когда запускать
+
+* Только на изменённых файлах (у тебя уже есть manifest по hash).
+* Для очень больших файлов: разреши анализ **первых X и “якорных” участков** (опционально), чтобы не сжечь токены.
+
+# Что это даст на поиске
+
+* Seed из BM25+kNN как и раньше, но:
+
+  * точнее сниппеты (`chunk_title`, `chunk_summary`),
+  * дешёвые и точные бусты/фильтры по `entities/tags/public_symbols/io`,
+  * чистая расширяемость соседями: `terms_set(entities)` + ограничение «не больше N чанков на файл».
+
+Если захочешь ещё компактнее — объедини `blocks.split` и `blocks.describe` в **один** tool `blocks.split_and_describe(text)` (LLM делает всё сразу и возвращает массив блоков со всеми полями). Но раз ты хочешь именно «сначала разбиение, потом описание» — батчи + фиксированная схема решают и качество, и цену.
+
+
+
+
+Отлично. Ниже — максимально полный, приоритезированный список того, **что стоит извлекать и сохранять на уровне чанка** (с учётом контекста всего файла). Я даю порядок **от самого важного к наименее важному**, с пометками рекомендованных типов полей для ES в квадратных скобках (пример: `[keyword]`, `[text]`, `[nested]`, `[dense_vector]`, `[boolean]`, `[integer]`, `[date]`). Фокус — универсально + акценты на SQL, Java/Kotlin/Groovy, JS/TS, XML/YAML, но подходит и для «любого текста/таблиц/ОCR».
+
+# 1) Критическое ядро (must-have)
+
+1. `doc_id` (путь файла) `[keyword]`
+2. `chunk_id`, `start_line`, `end_line` `[integer]`
+3. `lang` (детектированный язык/тип: java, ts, sql, yaml, md, …) `[keyword]`
+4. `chunk_title` — 1 короткая фраза, что внутри `[keyword]`
+5. `chunk_summary` — 1–3 предложения, строго ≤600–800 симв. `[text]`
+6. `text_hash` — SHA256 чанка для инкрементальности `[keyword]`
+7. `embedding` — вектор чанка `[dense_vector]`
+8. `entities` — нормализованные ключи (классы, таблицы, эндпойнты, фичи, флаги) ≤20 `[keyword]`
+9. `tags` — домен/слой/фреймворк: `domain=auth`, `layer=backend`, `framework=spring` ≤10 `[keyword]`
+10. `public_symbols` — экспортируемые имена (name, kind, signature, visibility) ≤20 `[nested(keyword)]`
+11. `io` — I/O-артефакты: БД-таблицы/колонки, Kafka-топики, S3-пути, файлы, URL-паттерны `[keyword]`
+12. `apis` — HTTP/gRPC/GraphQL/OpenAPI: метод/путь/operationId/тип `[nested(keyword)]`
+13. `config_keys` — ключи конфигов (YAML/XML/env) `[keyword]`
+14. `feature_flags` — флаги и значения по умолчанию `[keyword]`
+15. `security_flags` — метки `["pii","secrets","crypto","authz","audit"]` `[keyword]`
+16. `exceptions_errors` — коды/типы исключений/лог-тегов `[keyword]`
+17. `deps_imports` — импортируемые модули/пакеты/артефакты `[keyword]`
+18. `references_local` — локальные символы файла, на которые ссылается чанк `[keyword]`
+19. `llm_version` — версия извлечения (для reindex по смене промпта/модели) `[keyword]`
+20. `updated_at` `[date]`
+
+# 2) Сильные буст-сигналы (высокая отдача за малую цену)
+
+21. `purpose` — «зачем этот блок» в 1 фразе `[text]`
+22. `likely_queries` — 3–5 коротких ожидаемых вопросов `[keyword]`
+23. `anchor_strings` — характерные строки/регексы (ошибки, метки) `[keyword]`
+24. `domain_objects` — предметные сущности (User, Invoice, Token) `[keyword]`
+25. `ownership` — команда/владельцы/кодовнеры (если извлекаемо) `[keyword]`
+26. `deprecation` — булево + причина/ссылка `[boolean]`, `[text(index:false)]`
+27. `runtime_envs` — перечень переменных окружения, которые читает блок `[keyword]`
+28. `perf_hints` — кэш-ключи/TTL/пулы/таймауты/ретраи `[keyword]`
+29. `observability` — метрики/лейблы/трейс-имена/лог-категории `[keyword]`
+30. `permissions_roles` — требуемые права/скоупы/роли `[keyword]`
+
+# 3) Специфика по языкам и стеку (высокой важности)
+
+**Java/Kotlin/Groovy (Spring/JPA/Gradle):**
+31) `java.package` `[keyword]`
+32) `java.annotations` (например, `@RestController`, `@Transactional`, `@Entity`) `[keyword]`
+33) `spring.endpoints` — метод/путь/класс/метод `[nested(keyword)]`
+34) `jpa.entities` — имя сущности, таблица, поле→колонка `[nested(keyword)]`
+35) `jpa.queries` — named/native/JPQL идентификаторы `[keyword]`
+36) `gradle.tasks` / `gradle.deps` — плагины/зависимости/версии `[keyword]`
+37) `test.junit` / `spock.specs` — имена тестов/DisplayName `[keyword]`
+
+**JS/TS (Node/React/Express/Next):**
+38) `ts.exports` — default/named `[keyword]`
+39) `ts.types` — интерфейсы/типы/enum’ы `[keyword]`
+40) `node.routes` — Express/Koa: метод/путь/handler `[nested(keyword)]`
+41) `react.components` — имя/props (крупно, без глубокой схемы) `[keyword]`
+42) `package.scripts` — npm-скрипты `[keyword]`
+43) `path_aliases` — tsconfig/baseUrl/paths `[keyword]`
+
+**SQL (DDL/DML/DCL):**
+44) `sql.kind` — `ddl|dml|dcl|tcl` `[keyword]`
+45) `sql.objects.tables` — имена таблиц `[keyword]`
+46) `sql.objects.columns` — именованные колонки (с префиксом таблицы) `[keyword]`
+47) `sql.ddl` — создаваемые/изменяемые сущности (PK/FK/unique/index/partition/check) `[nested(keyword)]`
+48) `sql.procs_funcs_triggers` — имена + тип `[keyword]`
+49) `sql.cte/temp` — имена CTE/временных таблиц `[keyword]`
+50) `sql.joins` — какие таблицы связаны `[keyword]`
+51) `sql.params` — именованные параметры/плейсхолдеры `[keyword]`
+52) `sql.vendor` — postgres/mysql/mssql/oracle `[keyword]`
+53) `sql.side_effects` — изменяемые объекты, grants, транзакции `[keyword]`
+
+**XML/YAML/Конфиги/K8s/Helm:**
+54) `config.keys` — пути ключей (`a.b.c`) `[keyword]`
+55) `k8s.kind/apiVersion/metadata.name` `[keyword]`
+56) `k8s.image/env/ports/resources` `[nested(keyword)]`
+57) `k8s.selectors/labels` `[keyword]`
+58) `ci.jobs/steps/cron` — GitHub Actions/GitLab CI `[keyword]`
+59) `helm.values_refs` — используемые `.Values.*` `[keyword]`
+
+**API-контракты:**
+60) `openapi.paths` — метод/путь/operationId/tags `[nested(keyword)]`
+61) `graphql.schema` — типы/поля/резолверы `[keyword]`
+62) `grpc.proto` — service/method/message `[keyword]`
+
+**Сообщения/шины:**
+63) `kafka.topics` / `queues` / `exchanges` `[keyword]`
+64) `schemas` — Avro/Proto subject’ы `[keyword]`
+65) `consumer_groups` `[keyword]`
+
+# 4) Навигация, цитируемость, фрагментация
+
+66. `headings` — заголовки/подзаголовки (из комментов/README) `[keyword]`
+67. `code_blocks` — присутствующие языки в блоке (для md/ocr) `[keyword]`
+68. `table_headers` — заголовки таблиц (md/csv) `[keyword]`
+69. `links` — локальные якоря/внешние ссылки (полезны для соседей) `[keyword]`
+70. `neighbor_hints` — **только имена** потенциальных соседей (таблицы/эндпойнты/классы), не хранить doc_id `[keyword]`
+
+# 5) Качество, эволюция, эксплуатация
+
+71. `complexity` — грубая сложность/LOC в блоке `[integer]`
+72. `generated_code` — булево (protobuf/auto-gen) `[boolean]`
+73. `stability` — эвристика «стабильный/часто меняющийся» `[keyword]`
+74. `compat_version` — заявленная совместимость (Java 17, TS target) `[keyword]`
+75. `license_header` `[keyword]`
+76. `changelog_markers` — версии/даты в комментах `[keyword]`
+77. `todo_fixme` — наличие TODO/FIXME/XXX `[keyword]`
+
+# 6) Безопасность и соответствие
+
+78. `secrets_refs` — **только ключи** (не значения!) `[keyword]`
+79. `pii_fields` — кандидаты на персональные данные `[keyword]`
+80. `crypto_algorithms` — AES/RSA/hash/salt/argon2/bcrypt `[keyword]`
+81. `tls/mtls` — включено/настройки `[keyword]`
+82. `authn_authz` — провайдеры, схемы, scope/roles `[keyword]`
+
+# 7) Тесты, проверки, сценарии
+
+83. `tests.names` — имена/метки/DisplayName `[keyword]`
+84. `tests.fixtures` — данные/моки/стаб-файлы `[keyword]`
+85. `tests.tags` — slow/e2e/integration `[keyword]`
+86. `assertions` — ключевые утверждения (contains, equals, status=) `[keyword]`
+
+# 8) Время выполнения, задачи, расписания
+
+87. `cron` — выражения и job-имена `[keyword]`
+88. `schedulers` — Quartz/Spring Scheduling/Airflow DAG `[keyword]`
+89. `timeouts/retries/backoff` `[keyword]`
+
+# 9) Документы/README/ADR/RFC/Таблицы/ОCR
+
+90. `doc.type` — readme, adr, rfc, howto `[keyword]`
+91. `doc.status` — proposed/accepted/deprecated `[keyword]`
+92. `doc.decisions` — краткие тезисы решений `[text]`
+93. `tables.schema` — имена столбцов, типы (csv/tsv/md) `[keyword]`
+94. `ocr_text` — распознанный текст (укороченный, ≤2–4k симв.) `[text]`
+95. `diagram_nodes/edges` — если удаётся выделить (названия) `[keyword]`
+96. `captions` — подписи к рисункам/таблицам `[text(index:false)]`
+
+# 10) Моно-репо и сборка
+
+97. `module/path_alias` — модуль/воркспейс `[keyword]`
+98. `build_targets` — цели/таски `[keyword]`
+99. `dependency_coords` — group:artifact:version / npm name@ver `[keyword]`
+
+# 11) Служебные для ранжирования/фильтрации (тонкие, но полезные)
+
+100. `bm25_boost_terms` — топ-n стеммированных терминов чанка `[keyword]`
+101. `mmr_group` — группа диверсификации (по файлу/модулю) `[keyword]`
+102. `freshness_score` — численный сигнал «насколько новый» `[integer]`
+103. `confidence` — уверенность извлечения (0–1) `[integer or scaled]`
+
+---
+
+## Почему именно так и как это использовать
+
+* **Строгая схема → быстрые фильтры**: `entities/tags/apis/sql.*` — как `keyword`/`nested`, легко делать `terms_set`, `must/should` бусты и агрегации.
+* **Заголовок/аннотация → качество сниппетов**: `chunk_title/summary` сильно повышают «сходу по делу».
+* **I/O, API, SQL-объекты → точные попадания**: большинство реальных вопросов вращаются вокруг «что читает/пишет/экспонирует».
+* **Security/observability → умный приоритет**: можно поднимать чувствительные/производственные фрагменты.
+* **LLM-устойчивость**: лимиты длины, нормализация `entities`, версия `llm_version` + `text_hash` для инкрементальности.
+
+Если резать объём — минимумом я бы оставил пункты **1–15 + 44–53 (SQL) + 31–37 (Java/Kotlin) + 38–43 (TS/JS) + 54–59 (YAML/XML/K8s)**. Это уже даёт очень «прицельный» поиск без перегруза индекса.
