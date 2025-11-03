@@ -10,7 +10,6 @@ from tools import (
     main_search,
     code_stats,
     execute_command,
-    graphrag_query,
 )
 from sourcegraph import sg_search, sg_codeintel, sg_blob
 
@@ -29,7 +28,6 @@ TOOLS_MAP = {
     "sg_search": lambda p: sg_search(p["query"], p["path_prefix"], p["limit"]),
     "sg_codeintel": lambda p: sg_codeintel(p["mode"], p["symbol"], p["path_prefix"]),
     "sg_blob": lambda p: sg_blob(p["rel_path"], p["start_line"], p["end_line"]),
-    "graphrag_query": lambda p: graphrag_query(p["task"], p["path_prefix"], p["k"]),
 }
 
 def system_block(text):

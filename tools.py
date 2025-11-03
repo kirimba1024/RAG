@@ -1,7 +1,7 @@
 import docker
 
 from retriever import retrieve_fusion_nodes, get_code_stats
-from utils import SANDBOX_CONTAINER_NAME, GRAPHRAG_CONTAINER_NAME
+from utils import SANDBOX_CONTAINER_NAME
 
 
 def main_search(question: str, path_prefix: str, top_n: int) -> str:
@@ -27,19 +27,6 @@ def execute_command(command: str) -> str:
     )
     return result.output.decode('utf-8')
 
-def graphrag_query(task: str, path_prefix: str, k: int) -> str:
-    client = docker.from_env()
-    container = client.containers.get(GRAPHRAG_CONTAINER_NAME)
-    workdir = "/app/monorepo" + (f"/{path_prefix.lstrip('/')}" if path_prefix else "")
-    exec_result = container.exec_run(
-        cmd=["graphrag", "query", "-t", task, "-k", str(k)],
-        workdir=workdir,
-    )
-    out = exec_result.output.decode("utf-8", errors="replace")
-    if exec_result.exit_code != 0:
-        return f"[graphrag error {exec_result.exit_code}] {out}"
-    return out
-
 TOOLS_SCHEMA = [
     {
         "name": "main_search",
@@ -52,19 +39,6 @@ TOOLS_SCHEMA = [
                 "top_n": {"type": "integer", "minimum": 1, "maximum": 30, "description": "Количество результатов после reranking (диапазон 1-30, стандартное значение: 10)"}
             },
             "required": ["question", "path_prefix", "top_n"]
-        }
-    },
-    {
-        "name": "graphrag_query",
-        "description": "Запрос к индексу GraphRAG CLI",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "task": {"type": "string", "description": "Вопрос/задача"},
-                "path_prefix": {"type": "string", "description": "Целостный путь к папке относительно корня репозитория (пустая строка для корня)"},
-                "k": {"type": "integer", "description": "Кол-во источников (стандартное значение: 5)"}
-            },
-            "required": ["task", "path_prefix", "k"]
         }
     },
     {
