@@ -12,12 +12,6 @@ create_indices() {
     -d @/init/index.json >/dev/null 2>&1 || true
   
   echo "[elasticsearch] rag index applied"
-  
-  curl -fsS -X PUT "http://localhost:9200/manifest" \
-    -H 'Content-Type: application/json' \
-    -d @/init/manifest.json >/dev/null 2>&1 || true
-  
-  echo "[elasticsearch] manifest index applied"
 }
 
 create_indices &

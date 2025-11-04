@@ -32,25 +32,190 @@
   },
   "mappings": {
     "properties": {
+
+      "path": { "type": "keyword", "description": "Путь файла" },
+
+      "hash": { "type": "keyword", "description": "Git blob hash файла для отслеживания изменений" },
+
       "text": {
         "type": "text",
         "analyzer": "code_friendly",
+        "description": "Текст чанка. code_friendly разбивает camelCase/snake_case на слова (getUserById → get, user, by, id) для поиска по частям",
         "fields": {
-          "ru": { "type": "text", "analyzer": "ru_text" },
-          "en": { "type": "text", "analyzer": "en_text" }
+          "ru": { "type": "text", "analyzer": "ru_text", "description": "Русский анализ текста" },
+          "en": { "type": "text", "analyzer": "en_text", "description": "Английский анализ текста" }
         }
       },
-
-      "doc_id": { "type": "keyword" },
 
       "embedding": {
         "type": "dense_vector",
         "dims": 1024,
         "index": true,
-        "similarity": "cosine"
+        "similarity": "cosine",
+        "description": "Векторное представление чанка размерностью 1024 для семантического поиска"
       },
 
-      "metadata": { "type": "object", "enabled": true }
+      "file_size": { "type": "long", "description": "Размер файла в байтах" },
+      "file_lines": { "type": "integer", "description": "Количество строк в файле" },
+      "mime": { "type": "keyword", "description": "MIME-тип файла" },
+      "file_modified": { "type": "date", "description": "Дата изменения файла" },
+      "extension": { "type": "keyword", "description": "Расширение файла без точки для агрегаций" },
+      "filename": { "type": "keyword", "description": "Имя файла без пути" },
+      "path_parts": { "type": "keyword", "description": "Части пути файла" },
+      "is_test_file": { "type": "boolean", "description": "Тестовый файл или нет" },
+      "has_documentation": { "type": "boolean", "description": "Есть ли документация в файле" },
+      "layer": { "type": "keyword", "description": "Архитектурный слой: frontend/backend/data/ops" },
+      "dependency_count": { "type": "integer", "description": "Количество зависимостей в файле" },
+      "is_duplicate": { "type": "boolean", "description": "Дублированный код или уникальный" },
+
+      "chunk_id": { "type": "integer", "description": "Номер чанка в файле" },
+      "chunks": { "type": "integer", "description": "Всего чанков в файле" },
+      "chunk_lines": { "type": "integer", "description": "Количество строк в чанке" },
+      "chunk_size": { "type": "long", "description": "Размер чанка в байтах" },
+      "code_ratio": { "type": "double", "description": "Доля кода в чанке 0-1" },
+      "chunk_modified": { "type": "date", "description": "Дата изменения чанка" },
+      "lang": { "type": "keyword", "description": "Детектированный язык/тип: java, ts, sql, yaml, md" },
+      "start_line": { "type": "integer", "description": "Начальная строка чанка" },
+      "end_line": { "type": "integer", "description": "Конечная строка чанка" },
+      "kind": { "type": "keyword", "description": "Тип блока: function, class, config, other" },
+      "purpose": { "type": "text", "analyzer": "code_friendly", "description": "Зачем этот блок в 1 фразе" },
+
+      "title": { "type": "keyword", "description": "1 короткая фраза, что внутри" },
+      "summary": { "type": "text", "analyzer": "code_friendly", "description": "1-3 предложения, строго ≤600-800 символов" },
+      "why_relevant": { "type": "text", "analyzer": "code_friendly", "description": "Чем блок может ответить на вопросы ≤100 символов" },
+      "key_points": { "type": "keyword", "description": "Самые важные факты/формулы/правила ≤3 пункта по ≤80 символов" },
+      "anchors": { "type": "keyword", "description": "Опорные строки/регексы/коды ошибок ≤5 по ≤40 символов" },
+      "interfaces": { "type": "keyword", "description": "Унифицированные интерфейсы: HTTP GET /v1/orders/{id}, SQL select table:orders, MQ topic:orders.created ≤5 по ≤40 символов" },
+      "constraints": { "type": "keyword", "description": "Security/roles/flags/limits ≤3 по ≤40 символов" },
+      "where": { "type": "keyword", "description": "Путь и строки в формате path#Lstart-Lend для цитаты ≤40 символов" },
+      
+      "entities": { "type": "keyword", "description": "Нормализованные ключи: классы, таблицы, эндпойнты, фичи, флаги ≤20" },
+      "tags": { "type": "keyword", "description": "Домен/слой/фреймворк: domain=auth, layer=backend, framework=spring ≤10" },
+      "public_symbols": { "type": "keyword", "description": "Экспортируемые имена ≤20" },
+      "io": { "type": "keyword", "description": "I/O артефакты: БД-таблицы/колонки, Kafka-топики, S3-пути, файлы, URL-паттерны" },
+      "apis": { "type": "keyword", "description": "HTTP/gRPC/GraphQL/OpenAPI: метод/путь/operationId/тип" },
+      "config_keys": { "type": "keyword", "description": "Ключи конфигов (YAML/XML/env)" },
+      "feature_flags": { "type": "keyword", "description": "Флаги и значения по умолчанию" },
+      "security_flags": { "type": "keyword", "description": "Метки: pii, secrets, crypto, authz, audit" },
+      "exceptions_errors": { "type": "keyword", "description": "Коды/типы исключений/лог-тегов" },
+      "deps_imports": { "type": "keyword", "description": "Импортируемые модули/пакеты/артефакты" },
+      "references_local": { "type": "keyword", "description": "Локальные символы файла, на которые ссылается чанк" },
+      "llm_version": { "type": "keyword", "description": "Версия извлечения (для reindex по смене промпта/модели)" },
+      "updated_at": { "type": "date", "description": "Дата обновления" },
+      
+
+      "likely_queries": { "type": "keyword", "description": "3-5 коротких ожидаемых вопросов" },
+      "domain_objects": { "type": "keyword", "description": "Предметные сущности (User, Invoice, Token)" },
+      "ownership": { "type": "keyword", "description": "Команда/владельцы/кодовнеры" },
+      "deprecation": { "type": "boolean", "description": "Булево флага deprecated" },
+      "deprecation_reason": { "type": "text", "index": false, "description": "Причина/ссылка на устаревание" },
+      "runtime_envs": { "type": "keyword", "description": "Перечень переменных окружения, которые читает блок" },
+      "perf_hints": { "type": "keyword", "description": "Кэш-ключи/TTL/пулы/таймауты/ретраи" },
+      "observability": { "type": "keyword", "description": "Метрики/лейблы/трейс-имена/лог-категории" },
+      "permissions_roles": { "type": "keyword", "description": "Требуемые права/скоупы/роли" },
+      
+      "java_package": { "type": "keyword", "description": "Пакет Java" },
+      "java_annotations": { "type": "keyword", "description": "Аннотации: @RestController, @Transactional, @Entity" },
+      "spring_endpoints": { "type": "keyword", "description": "Spring endpoint: метод/путь/класс/метод" },
+      "jpa_entities": { "type": "keyword", "description": "JPA entity: имя сущности, таблица, поле→колонка" },
+      "jpa_queries": { "type": "keyword", "description": "Named/native/JPQL идентификаторы" },
+      "gradle_tasks": { "type": "keyword", "description": "Gradle таски" },
+      "gradle_deps": { "type": "keyword", "description": "Gradle плагины/зависимости/версии" },
+      
+      "ts_exports": { "type": "keyword", "description": "TS exports: default/named" },
+      "ts_types": { "type": "keyword", "description": "TS интерфейсы/типы/enum" },
+      "node_routes": { "type": "keyword", "description": "Express/Koa route: метод/путь/handler" },
+      "react_components": { "type": "keyword", "description": "React компонент: имя/props" },
+      "package_scripts": { "type": "keyword", "description": "NPM скрипты" },
+      "path_aliases": { "type": "keyword", "description": "TS config baseUrl/paths" },
+      
+      "sql_kind":      { "type": "keyword", "description": "Класс SQL: ddl | dml | dcl | tcl (одно значение)" },
+      "sql_vendor":    { "type": "keyword", "description": "Вендор: postgres | mysql | mssql | oracle | sqlite | snowflake | bigquery (опционально)" },
+      "sql_ops":       { "type": "keyword", "description": "Глаголы-операции: select|insert|update|delete|merge|call|create|alter|drop|grant|revoke|commit|rollback" },
+      "sql_objects":   { "type": "keyword", "description": "Главные объекты с типом: table:orders, view:active_users, proc:recalc, func:normalize, trigger:tri_upd, index:idx_orders_dt, schema:public, sequence:seq_id" },
+      "sql_columns":   { "type": "keyword", "description": "Колонки в формате table.column (или schema.table.column при наличии схемы); top-N, нормализованные" },
+      "sql_relations": { "type": "keyword", "description": "Связи JOIN как пары tableA~tableB (лексикографически отсортированы для дедупа)" },
+      "sql_params":    { "type": "keyword", "description": "Именованные параметры/плейсхолдеры (нормализованные имена без :@$), напр. user_id, start_ts" },
+      "sql_effects":   { "type": "keyword", "description": "Побочные эффекты/изменения: write:table:orders, alter:table:users, grant:role:analyst, revoke:priv:select, txn:begin|commit|rollback" },
+      
+      "config_keys_yaml": { "type": "keyword", "description": "Пути ключей YAML (a.b.c)" },
+      "k8s_kind": { "type": "keyword", "description": "K8s kind" },
+      "k8s_api_version": { "type": "keyword", "description": "K8s apiVersion" },
+      "k8s_metadata_name": { "type": "keyword", "description": "K8s metadata.name" },
+      "k8s_image": { "type": "keyword", "description": "K8s image" },
+      "k8s_env": { "type": "keyword", "description": "K8s environment variables" },
+      "k8s_ports": { "type": "keyword", "description": "K8s ports" },
+      "k8s_resources": { "type": "keyword", "description": "K8s resources" },
+      "k8s_selectors": { "type": "keyword", "description": "K8s selectors" },
+      "k8s_labels": { "type": "keyword", "description": "K8s labels" },
+      "ci_jobs": { "type": "keyword", "description": "GitHub Actions/GitLab CI jobs" },
+      "ci_steps": { "type": "keyword", "description": "CI steps" },
+      "ci_cron": { "type": "keyword", "description": "CI cron" },
+      "helm_values_refs": { "type": "keyword", "description": "Helm .Values.* ссылки" },
+      
+      "openapi_paths": { "type": "keyword", "description": "OpenAPI: метод/путь/operationId/tags" },
+      "graphql_schema": { "type": "keyword", "description": "GraphQL типы/поля/резолверы" },
+      "grpc_service": { "type": "keyword", "description": "gRPC service" },
+      "grpc_method": { "type": "keyword", "description": "gRPC method" },
+      "grpc_message": { "type": "keyword", "description": "gRPC message" },
+      
+      "kafka_topics": { "type": "keyword", "description": "Kafka topics" },
+      "queues": { "type": "keyword", "description": "Queues" },
+      "exchanges": { "type": "keyword", "description": "Exchanges" },
+      "schemas": { "type": "keyword", "description": "Avro/Proto subject" },
+      "consumer_groups": { "type": "keyword", "description": "Consumer groups" },
+      
+      "headings": { "type": "keyword", "description": "Заголовки/подзаголовки из комментов/README" },
+      "code_blocks": { "type": "keyword", "description": "Присутствующие языки в блоке для md/ocr" },
+      "table_headers": { "type": "keyword", "description": "Заголовки таблиц md/csv" },
+      "links": { "type": "keyword", "description": "Локальные якоря/внешние ссылки полезны для соседей" },
+      "neighbor_hints": { "type": "keyword", "description": "Только имена потенциальных соседей: таблицы/эндпойнты/классы" },
+      
+      "complexity": { "type": "double", "description": "Грубая сложность/LOC в блоке" },
+      "complexity_score": { "type": "double", "description": "Оценка сложности кода (цикломатическая/когнитивная)" },
+      "generated_code": { "type": "boolean", "description": "Protobuf/auto-gen код" },
+      "stability": { "type": "keyword", "description": "Эвристика стабильный/часто меняющийся" },
+      "compat_version": { "type": "keyword", "description": "Заявленная совместимость: Java 17, TS target" },
+      "license_header": { "type": "keyword", "description": "License header" },
+      "changelog_markers": { "type": "keyword", "description": "Версии/даты в комментах" },
+      "todo_fixme": { "type": "keyword", "description": "Наличие TODO/FIXME/XXX" },
+      
+      "secrets_refs": { "type": "keyword", "description": "Только ключи секретов, не значения" },
+      "pii_fields": { "type": "keyword", "description": "Кандидаты на персональные данные" },
+      "crypto_algorithms": { "type": "keyword", "description": "AES/RSA/hash/salt/argon2/bcrypt" },
+      "tls_mtls": { "type": "keyword", "description": "TLS/MTLS включено/настройки" },
+      "authn_authz": { "type": "keyword", "description": "Провайдеры, схемы, scope/roles" },
+      
+      "test_names": { "type": "keyword", "description": "Имена/метки/DisplayName тестов" },
+      "test_fixtures": { "type": "keyword", "description": "Данные/моки/стаб-файлы" },
+      "test_tags": { "type": "keyword", "description": "Теги тестов: slow/e2e/integration" },
+      "assertions": { "type": "keyword", "description": "Ключевые утверждения: contains, equals, status=" },
+      
+      "cron": { "type": "keyword", "description": "Cron выражения и job имена" },
+      "schedulers": { "type": "keyword", "description": "Quartz/Spring Scheduling/Airflow DAG" },
+      "timeouts_retries_backoff": { "type": "keyword", "description": "Таймауты/ретраи/backoff" },
+      
+      "doc_type": { "type": "keyword", "description": "readme, adr, rfc, howto" },
+      "doc_status": { "type": "keyword", "description": "proposed/accepted/deprecated" },
+      "doc_decisions": { "type": "text", "analyzer": "code_friendly", "description": "Краткие тезисы решений" },
+      "tables_schema": { "type": "keyword", "description": "Имена столбцов, типы csv/tsv/md" },
+      "ocr_text": { "type": "text", "analyzer": "code_friendly", "description": "Распознанный текст укороченный ≤2-4k символов" },
+      "diagram_nodes": { "type": "keyword", "description": "Названия узлов диаграммы" },
+      "diagram_edges": { "type": "keyword", "description": "Названия рёбер диаграммы" },
+      "captions": { "type": "text", "index": false, "description": "Подписи к рисункам/таблицам" },
+      
+      "module_path_alias": { "type": "keyword", "description": "Модуль/воркспейс" },
+
+      "dependency_coords": { "type": "keyword", "description": "group:artifact:version / npm name@ver" },
+
+      "confidence": {
+        "type": "double",
+        "description": "Интегральная уверенность пайплайна (0–1) в корректности извлечённых фактов по чанку. Считается детерминированно из проверок схемы, верификации по исходному тексту/AST, стабильности версий и полноты заполнения."
+      },
+      "self_confidence": {
+        "type": "double",
+        "description": "Самооценка LLM (0–1), которую модель возвращает вместе с результатом для данного чанка при индексации. Используется как мягкий сигнал и не может повышать итог выше ограничений верификации."
+      }
     }
   }
 }

@@ -39,7 +39,7 @@ class HybridESRetriever(BaseRetriever):
         query_embedding = Settings.embed_model.get_text_embedding(query_bundle.query_str)
         filters = []
         if self.path_prefix:
-            filters.append({"prefix": {"doc_id": self.path_prefix}})
+            filters.append({"prefix": {"path": self.path_prefix}})
         body = {
             "size": self.top_k,
             "knn": {
@@ -75,8 +75,13 @@ class HybridESRetriever(BaseRetriever):
         nodes = []
         for hit in response["hits"]["hits"]:
             source = hit["_source"]
-            metadata = source.get("metadata", {}).copy()
-            metadata["doc_id"] = source.get("doc_id")
+            metadata = {
+                "doc_id": source.get("path"),
+                "chunk_id": source.get("chunk_id"),
+                "chunk_count": source.get("chunks"),
+                "start_line": source.get("start_line"),
+                "end_line": source.get("end_line"),
+            }
             node = TextNode(id_=hit["_id"], text=source["text"], metadata=metadata)
             nodes.append(NodeWithScore(node=node, score=float(hit["_score"])))
         return nodes
@@ -94,21 +99,21 @@ def retrieve_fusion_nodes(question: str, path_prefix: str, top_n: int) -> List[B
 
 def get_code_stats(path_prefix: str = "") -> str:
     """Базовая статистика кодовой базы"""
-    query_filter = {"prefix": {"doc_id": path_prefix}} if path_prefix else {"match_all": {}}
+    query_filter = {"prefix": {"path": path_prefix}} if path_prefix else {"match_all": {}}
     query = {
         "size": 0,
         "query": query_filter,
         "aggs": {
-            "files": {"cardinality": {"field": "doc_id.keyword"}},
+            "files": {"cardinality": {"field": "path"}},
             "chunks": {"value_count": {"field": "_id"}},
             "top_files": {
-                "terms": {"field": "doc_id.keyword", "size": 10},
-                "aggs": {"chunk_count": {"value_count": {"field": "metadata.chunk_id"}}}
+                "terms": {"field": "path", "size": 10},
+                "aggs": {"chunk_count": {"value_count": {"field": "chunk_id"}}}
             },
-            "avg_chunk_size": {"avg": {"field": "metadata.end_line"}},
+            "avg_chunk_size": {"avg": {"field": "end_line"}},
             "largest_files": {
-                "terms": {"field": "doc_id.keyword", "size": 5},
-                "aggs": {"max_lines": {"max": {"field": "metadata.end_line"}}}
+                "terms": {"field": "path", "size": 5},
+                "aggs": {"max_lines": {"max": {"field": "end_line"}}}
             }
         }
     }

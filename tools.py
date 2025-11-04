@@ -9,7 +9,7 @@ def main_search(question: str, path_prefix: str, top_n: int) -> str:
     results = []
     for node in nodes:
         doc_id = node.metadata['doc_id']
-        chunk_info = f"[chunk {node.metadata['chunk_id']}/{node.metadata['chunk_total']}]"
+        chunk_info = f"[chunk {node.metadata['chunk_id']}/{node.metadata.get('chunk_count', node.metadata.get('chunk_total', '?'))}]"
         line_info = f"lines {node.metadata['start_line']}-{node.metadata['end_line']}"
         header = f"{doc_id} {chunk_info} {line_info}"
         results.append(f"{header}:\n{node.text}")

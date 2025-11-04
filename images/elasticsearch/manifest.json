@@ -5,16 +5,9 @@
   },
   "mappings": {
     "properties": {
-      "path": {
-        "type": "keyword"
-      },
-      "hash": {
-        "type": "keyword"
-      },
-      "updated_at": {
-        "type": "date",
-        "format": "strict_date_optional_time||epoch_millis"
-      }
+      "path": { "type": "keyword", "description": "Путь файла относительно корня репозитория" },
+
+      "updated_at": { "type": "date", "format": "strict_date_optional_time||epoch_millis", "description": "Дата последнего обновления записи в манифесте" }
     }
   }
 }
