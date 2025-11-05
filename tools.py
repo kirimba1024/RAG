@@ -61,16 +61,18 @@ SPLIT_BLOCKS_TOOL = {
     "input_schema": {
         "type": "object",
         "additionalProperties": False,
-        "required": ["title","description","summary","language","purpose","file_type","tags","key_points","blocks"],
+        "required": ["name","title","description","summary","detailed","language","purpose","file_type","tags","key_points","blocks"],
         "properties": {
-            "title":       { "type": "string", "minLength": 1, "maxLength": 128, "description": "Краткий заголовок файла." },
-            "description": { "type": "string", "minLength": 1, "maxLength": 256, "description": "Одна фраза о содержимом файла." },
-            "summary":     { "type": "string", "minLength": 1, "maxLength": 800, "description": "1–3 предложения: что внутри и зачем." },
-            "language":    { "type": "string", "minLength": 1, "maxLength": 32,  "description": "Основной язык/диалект (java, ts, yaml, md, sql…)." },
-            "purpose":     { "type": "string", "minLength": 1, "maxLength": 240, "description": "Зачем нужен файл." },
-            "file_type":   { "type": "string", "enum": ["code","markup","config","schema","doc","data","binary","mixed"], "description": "Общий тип содержимого." },
-            "tags":        { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 40 }, "maxItems": 10, "description": "Главные ключевые теги." },
-            "key_points":  { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 80 }, "maxItems": 3, "description": "Тезисы о файле." },
+            "name":        {"type": "string", "minLength": 1, "maxLength": 32, "pattern": "^\\S+$", "description": "Имя файла одним словом, отражающее суть."},
+            "title":       {"type": "string", "minLength": 1, "maxLength": 128, "description": "Заголовок, кратко описывающий назначение файла."},
+            "description": {"type": "string", "minLength": 1, "maxLength": 256, "description": "Одна фраза о содержимом файла."},
+            "summary":     {"type": "string", "minLength": 1, "maxLength": 1024, "description": "Краткое содержание и цель файла."},
+            "detailed":    {"type": "string", "minLength": 1, "maxLength": 2048, "description": "Подробное описание структуры и смысла."},
+            "language":    {"type": "string", "minLength": 1, "maxLength": 32, "description": "Основной язык/диалект (java, ts, yaml, md, sql…)."},
+            "purpose":     {"type": "string", "minLength": 1, "maxLength": 240, "description": "Зачем нужен файл."},
+            "file_type":   {"type": "string", "enum": ["code", "markup", "config", "schema", "doc", "data", "binary", "mixed"], "description": "Общий тип содержимого."},
+            "tags":        {"type": "array", "minItems": 1, "uniqueItems": True, "items": {"type": "string", "minLength": 1, "maxLength": 40}, "maxItems": 10, "description": "Главные ключевые теги, метки."},
+            "key_points":  {"type": "array", "minItems": 1, "uniqueItems": True, "items": {"type": "string", "minLength": 1, "maxLength": 80}, "maxItems": 3, "description": "Ключевые тезисы."},
             "blocks": {
                 "type": "array",
                 "minItems": 1,
@@ -83,7 +85,7 @@ SPLIT_BLOCKS_TOOL = {
                         "start_line": { "type": "integer", "minimum": 1, "description": "Первая строка блока (1-индексация)." },
                         "end_line":   { "type": "integer", "minimum": 1, "description": "Последняя строка блока (включительно)." },
                         "title":      { "type": "string",  "minLength": 1, "maxLength": 120, "description": "Короткое имя блока (функция/секция/таблица и т.п.)." },
-                        "kind":       { "type": "string",  "minLength": 1, "maxLength": 32,  "description": "Тип блока: function, class, section, config, table, paragraph, other." }
+                        "kind":       { "type": "string",  "minLength": 1, "maxLength": 32, "description": "Тип блока; предпочитай section, paragraph, list, list_item, table, table_header, table_row, code, config, class, function; при сомнении — logic_block; допускается своё слово." }
                     }
                 }
             }
