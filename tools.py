@@ -57,27 +57,40 @@ EXECUTE_COMMAND_TOOL = {
 
 SPLIT_BLOCKS_TOOL = {
     "name": "split_blocks",
-    "description": "Возвращает список семантических блоков файла",
+    "description": "Верни один объект по схеме ниже.",
     "input_schema": {
         "type": "object",
+        "additionalProperties": False,
+        "required": ["title","description","summary","language","purpose","file_type","tags","key_points","blocks"],
         "properties": {
+            "title":       { "type": "string", "minLength": 1, "maxLength": 128, "description": "Краткий заголовок файла." },
+            "description": { "type": "string", "minLength": 1, "maxLength": 256, "description": "Одна фраза о содержимом файла." },
+            "summary":     { "type": "string", "minLength": 1, "maxLength": 800, "description": "1–3 предложения: что внутри и зачем." },
+            "language":    { "type": "string", "minLength": 1, "maxLength": 32,  "description": "Основной язык/диалект (java, ts, yaml, md, sql…)." },
+            "purpose":     { "type": "string", "minLength": 1, "maxLength": 240, "description": "Зачем нужен файл." },
+            "file_type":   { "type": "string", "enum": ["code","markup","config","schema","doc","data","binary","mixed"], "description": "Общий тип содержимого." },
+            "tags":        { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 40 }, "maxItems": 10, "description": "Главные ключевые теги." },
+            "key_points":  { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 80 }, "maxItems": 3, "description": "Тезисы о файле." },
             "blocks": {
                 "type": "array",
+                "minItems": 1,
+                "description": "Список смысловых блоков, полностью покрывающих файл.",
                 "items": {
                     "type": "object",
+                    "additionalProperties": False,
+                    "required": ["start_line","end_line","title","kind"],
                     "properties": {
-                        "start_line": {"type": "integer"},
-                        "end_line": {"type": "integer"},
-                        "title": {"type": "string"},
-                        "kind": {"type": "string", "enum": ["function", "class", "config", "other"]}
-                    },
-                    "required": ["start_line", "end_line", "title", "kind"]
+                        "start_line": { "type": "integer", "minimum": 1, "description": "Первая строка блока (1-индексация)." },
+                        "end_line":   { "type": "integer", "minimum": 1, "description": "Последняя строка блока (включительно)." },
+                        "title":      { "type": "string",  "minLength": 1, "maxLength": 120, "description": "Короткое имя блока (функция/секция/таблица и т.п.)." },
+                        "kind":       { "type": "string",  "minLength": 1, "maxLength": 32,  "description": "Тип блока: function, class, section, config, table, paragraph, other." }
+                    }
                 }
             }
-        },
-        "required": ["blocks"]
+        }
     }
 }
+
 
 DESCRIBE_BLOCK_TOOL = {
     "name": "describe_block",

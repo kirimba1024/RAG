@@ -2563,3 +2563,6 @@ Likely queries (3–5 коротких формулировок)
       "self_confidence": { "type": "double" },
       "freshness_score": { "type": "double" },
       "llm_hint": { "type": "object", "enabled": false }
+
+
+Хорошо. дело в том что у нас не всегда код а бывает html файл, бывает таблица, бывает xml yaml и всё что угодно поэтому я думаю kind лучше вообще универсальным сделать
