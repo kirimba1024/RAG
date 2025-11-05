@@ -5,12 +5,7 @@ from pathlib import Path
 from anthropic import Anthropic
 
 from utils import CLAUDE_MODEL, ANTHROPIC_API_KEY, load_prompt, setup_logging
-from tools import (
-    TOOLS_SCHEMA,
-    main_search,
-    code_stats,
-    execute_command,
-)
+from tools import MAIN_SEARCH_TOOL, CODE_STATS_TOOL, EXECUTE_COMMAND_TOOL, execute_tool
 
 logger = setup_logging(Path(__file__).stem)
 
@@ -20,22 +15,9 @@ NAVIGATION = load_prompt("prompts/chat_system_navigation.txt")
 CHAT_GATHER = load_prompt("prompts/chat_system_gather.txt")
 CHAT_ANSWER = load_prompt("prompts/chat_system_answer.txt")
 CACHE_BLOCK = {"cache_control": {"type": "ephemeral"}}
-TOOLS_MAP = {
-    "main_search": lambda p: main_search(p["question"], p["path_prefix"], p["top_n"]),
-    "code_stats": lambda p: code_stats(p["path_prefix"]),
-    "execute_command": lambda p: execute_command(p["command"]),
-}
 
 def system_block(text):
     return [{"type": "text", "text": text, **CACHE_BLOCK}]
-
-def execute_tool(tool_name, tool_input):
-    try:
-        return TOOLS_MAP[tool_name](tool_input)
-    except Exception as e:
-        logger.exception("Tool failed: %s %s", tool_name, tool_input)
-        return f"Ошибка: {e}"
-
 
 def chat(message, history, summary):
     logger.info(f"💬 {message}...")
@@ -53,7 +35,7 @@ def chat(message, history, summary):
         model=CLAUDE_MODEL,
         system=system_navigation + system_gather + system_summary,
         messages=messages,
-        tools=TOOLS_SCHEMA,
+        tools=[MAIN_SEARCH_TOOL, CODE_STATS_TOOL, EXECUTE_COMMAND_TOOL],
         max_tokens=4096,
     ) as stream:
         for event in stream:
@@ -120,7 +102,7 @@ def chat(message, history, summary):
         model=CLAUDE_MODEL,
         system=system_navigation + system_answer + system_summary,
         messages=messages,
-        tools=TOOLS_SCHEMA,
+        tools=[MAIN_SEARCH_TOOL, CODE_STATS_TOOL, EXECUTE_COMMAND_TOOL],
         max_tokens=4096,
     ) as stream:
         for event in stream:

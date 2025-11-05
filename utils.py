@@ -7,6 +7,7 @@ import unicodedata
 from pathlib import Path
 from io import BytesIO
 
+import docker
 import fitz
 import pandas as pd
 import pytesseract
@@ -155,3 +156,12 @@ def extract_binary_content(path: Path):
         img = Image.open(BytesIO(file_bytes))
         return pytesseract.image_to_string(img, lang="rus+eng")
     return None
+
+def execute_command(command: str) -> str:
+    client = docker.from_env()
+    container = client.containers.get(SANDBOX_CONTAINER_NAME)
+    result = container.exec_run(
+        cmd=["timeout", "30", "sh", "-c", command],
+        user="nobody"
+    )
+    return result.output.decode('utf-8')

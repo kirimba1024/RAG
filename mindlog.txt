@@ -1649,3 +1649,917 @@ Likely queries (3–5 коротких формулировок)
 * **LLM-устойчивость**: лимиты длины, нормализация `entities`, версия `llm_version` + `text_hash` для инкрементальности.
 
 Если резать объём — минимумом я бы оставил пункты **1–15 + 44–53 (SQL) + 31–37 (Java/Kotlin) + 38–43 (TS/JS) + 54–59 (YAML/XML/K8s)**. Это уже даёт очень «прицельный» поиск без перегруза индекса.
+
+
+Что я планирую - я планирую насытить каждый чанк файла через LLM при помощи 2 фаз
+1) раздробить на семантические области L-start L-END
+2) каждую семантическую область отдельно проанализировать и заполнить все те поля что я сверху указал. 
+
+Я анализирую мультипроектную мультиязычную базу. 
+в LLM всегда попадает текст (если был бинарь он через OCR превратился в текст тоже) 
+так что мы гарантируем тест и опираемся на номера строк. 
+Чанки дробятся именно на номера строк. Чанки идут один за другим поэтому имеют номера (внутри 1 файла)
+
+потом через tools при задавали вопроса мы будем в ES искать BM25 + KNN + ReRANK плюс прочие плюшки
+ для поиска по  RAG. будем использовать вот эти мета-поля для семантического поиска заменяющего граф.
+  Поля внутри чанка должны давать невероятно полезную информацию которую мы предпосчитываем заранее 
+  для каждого файла. И на основе этой информации наш умный вытаскиваешь подходящих чанков будет легко и 
+  быстро добираться до ответов. Поэтому важным моментом ещё является какие именно поля мы сохраним в ES.
+
+        "file_size": {
+        "type": "long",
+        "description": "Размер файла в байтах. Для статистики."
+      },
+      "file_lines": {
+        "type": "integer",
+        "description": "Количество строк в файле"
+      },
+      "file_description": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "1 короткая фраза, что внутри файла"
+      },
+      "file_title": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Заголовок файла"
+      },
+      "file_purpose": {
+        "type": "text",
+        "analyzer": "code_friendly",
+        "description": "Зачем этот файл"
+      },
+      "file_summary": {
+        "type": "text",
+        "analyzer": "code_friendly",
+        "description": "1-3 предложения, строго ≤600-800 символов"
+      },
+      "modified": {
+        "type": "date",
+        "description": "Дата изменения файла"
+      },
+      "extension": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Расширение файла без точки для агрегаций"
+      },
+      "filename": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Имя файла без пути"
+      },
+      "path_parts": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Части пути файла"
+      },
+      "path_segments": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Сегменты пути файла"
+      },
+      "mime": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "MIME-тип файла"
+      },
+      "is_test_file": {
+        "type": "boolean",
+        "description": "Тестовый файл или нет"
+      },
+      "has_documentation": {
+        "type": "boolean",
+        "description": "Есть ли документация в файле"
+      },
+      "layer": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Архитектурный слой: frontend/backend/data/ops"
+      },
+      "dependency_count": {
+        "type": "integer",
+        "description": "Количество зависимостей в файле"
+      },
+      "is_duplicate": {
+        "type": "boolean",
+        "description": "Дублированный код или уникальный"
+      },
+
+      "chunk_id": {
+        "type": "integer",
+        "description": "Номер чанка в файле"
+      },
+      "chunks": {
+        "type": "integer",
+        "description": "Всего чанков в файле"
+      },
+      "lines": {
+        "type": "integer",
+        "description": "Количество строк в чанке"
+      },
+      "size": {
+        "type": "long",
+        "description": "Размер чанка в байтах"
+      },
+      "code_ratio": {
+        "type": "double",
+        "description": "Доля кода в чанке 0-1"
+      },
+      "description": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "1 короткая фраза, что внутри"
+      },
+      "title": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Заголовок чанка"
+      },
+      "purpose": {
+        "type": "text",
+        "analyzer": "code_friendly",
+        "description": "Зачем этот блок в 1 фразе"
+      },
+      "summary": {
+        "type": "text",
+        "analyzer": "code_friendly",
+        "description": "1-3 предложения, строго ≤600-800 символов о том что внутри чанка"
+      },
+      "lang": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Детектированный язык/тип: java, ts, sql, yaml, md"
+      },
+      "start_line": {
+        "type": "integer",
+        "description": "Начальная строка чанка"
+      },
+      "end_line": {
+        "type": "integer",
+        "description": "Конечная строка чанка"
+      },
+      "kind": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Тип блока: function, class, config, other"
+      },
+      "why_relevant": {
+        "type": "text",
+        "analyzer": "code_friendly",
+        "description": "Чем блок может ответить на вопросы ≤100 символов"
+      },
+      "key_points": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Самые важные факты/формулы/правила ≤3 пункта по ≤80 символов"
+      },
+      "anchors": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Опорные строки/регексы/коды ошибок ≤5 по ≤40 символов"
+      },
+      "interfaces": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Унифицированные интерфейсы: HTTP GET /v1/orders/{id}, SQL select table:orders, MQ topic:orders.created ≤5 по ≤40 символов"
+      },
+      "constraints": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Security/roles/flags/limits ≤3 по ≤40 символов"
+      },
+      "where": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Путь и строки в формате path#Lstart-Lend для цитаты ≤40 символов"
+      },
+
+      "entities": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "eager_global_ordinals": true,
+        "description": "Нормализованные ключи: классы, таблицы, эндпойнты, фичи, флаги ≤20"
+      },
+      "tags": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "eager_global_ordinals": true,
+        "description": "Домен/слой/фреймворк: domain=auth, layer=backend, framework=spring ≤10"
+      },
+      "public_symbols": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Экспортируемые имена ≤20"
+      },
+      "public_symbol_names": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Имена публичных символов"
+      },
+      "io": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "I/O артефакты: БД-таблицы/колонки, Kafka-топики, S3-пути, файлы, URL-паттерны"
+      },
+      "apis": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "HTTP/gRPC/GraphQL/OpenAPI: метод/путь/operationId/тип"
+      },
+      "config_keys": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Ключи конфигов (YAML/XML/env)"
+      },
+      "feature_flags": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Флаги и значения по умолчанию"
+      },
+      "security_flags": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Метки: pii, secrets, crypto, authz, audit"
+      },
+      "exceptions_errors": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Коды/типы исключений/лог-тегов"
+      },
+      "deps_imports": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Импортируемые модули/пакеты/артефакты"
+      },
+      "references_local": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Локальные символы файла, на которые ссылается чанк"
+      },
+      "bm25_boost_terms": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Термы для буста BM25"
+      },
+      "mmr_group": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Группа для MMR (Maximum Marginal Relevance)"
+      },
+      "llm_version": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Версия извлечения (для reindex по смене промпта/модели)"
+      },
+      "text_hash": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Hash текста чанка"
+      },
+      "updated_at": {
+        "type": "date",
+        "description": "Дата обновления"
+      },
+
+      "likely_queries": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "3-5 коротких ожидаемых вопросов"
+      },
+      "domain_objects": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Предметные сущности (User, Invoice, Token)"
+      },
+      "ownership": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Команда/владельцы/кодовнеры"
+      },
+      "deprecation": {
+        "type": "boolean",
+        "description": "Булево флага deprecated"
+      },
+      "deprecation_reason": {
+        "type": "text",
+        "index": false,
+        "description": "Причина/ссылка на устаревание"
+      },
+      "runtime_envs": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Перечень переменных окружения, которые читает блок"
+      },
+      "perf_hints": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Кэш-ключи/TTL/пулы/таймауты/ретраи"
+      },
+      "observability": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Метрики/лейблы/трейс-имена/лог-категории"
+      },
+      "permissions_roles": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Требуемые права/скоупы/роли"
+      },
+
+      "java_package": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Пакет Java"
+      },
+      "java_annotations": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Аннотации: @RestController, @Transactional, @Entity"
+      },
+      "spring_endpoints": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Spring endpoint: метод/путь/класс/метод"
+      },
+      "jpa_entities": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "JPA entity: имя сущности, таблица, поле→колонка"
+      },
+      "jpa_queries": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Named/native/JPQL идентификаторы"
+      },
+      "gradle_tasks": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Gradle таски"
+      },
+      "gradle_deps": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Gradle плагины/зависимости/версии"
+      },
+
+      "ts_exports": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "TS exports: default/named"
+      },
+      "ts_types": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "TS интерфейсы/типы/enum"
+      },
+      "node_routes": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Express/Koa route: метод/путь/handler"
+      },
+      "react_components": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "React компонент: имя/props"
+      },
+      "package_scripts": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "NPM скрипты"
+      },
+      "path_aliases": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "TS config baseUrl/paths"
+      },
+
+      "sql_kind": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Класс SQL: ddl | dml | dcl | tcl (одно значение)"
+      },
+      "sql_vendor": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Вендор: postgres | mysql | mssql | oracle | sqlite | snowflake | bigquery (опционально)"
+      },
+      "sql_ops": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Глаголы-операции: select|insert|update|delete|merge|call|create|alter|drop|grant|revoke|commit|rollback"
+      },
+      "sql_objects": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Главные объекты с типом: table:orders, view:active_users, proc:recalc, func:normalize, trigger:tri_upd, index:idx_orders_dt, schema:public, sequence:seq_id"
+      },
+      "sql_tables": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "eager_global_ordinals": true,
+        "description": "Таблицы SQL"
+      },
+      "sql_columns": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Колонки в формате table.column (или schema.table.column при наличии схемы); top-N, нормализованные"
+      },
+      "sql_relations": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Связи JOIN как пары tableA~tableB (лексикографически отсортированы для дедупа)"
+      },
+      "sql_params": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Именованные параметры/плейсхолдеры (нормализованные имена без :@$), напр. user_id, start_ts"
+      },
+      "sql_effects": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Побочные эффекты/изменения: write:table:orders, alter:table:users, grant:role:analyst, revoke:priv:select, txn:begin|commit|rollback"
+      },
+
+      "config_keys_yaml": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Пути ключей YAML (a.b.c)"
+      },
+      "k8s_kind": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "K8s kind"
+      },
+      "k8s_api_version": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "K8s apiVersion"
+      },
+      "k8s_metadata_name": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "K8s metadata.name"
+      },
+      "k8s_image": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "K8s image"
+      },
+      "k8s_env": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "K8s environment variables"
+      },
+      "k8s_ports": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "K8s ports"
+      },
+      "k8s_resources": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "K8s resources"
+      },
+      "k8s_selectors": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "K8s selectors"
+      },
+      "k8s_labels": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "K8s labels"
+      },
+      "ci_jobs": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "GitHub Actions/GitLab CI jobs"
+      },
+      "ci_steps": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "CI steps"
+      },
+      "ci_cron": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "CI cron"
+      },
+      "helm_values_refs": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Helm .Values.* ссылки"
+      },
+
+      "openapi_paths": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "OpenAPI: метод/путь/operationId/tags"
+      },
+      "graphql_schema": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "GraphQL типы/поля/резолверы"
+      },
+      "grpc_service": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "gRPC service"
+      },
+      "grpc_method": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "gRPC method"
+      },
+      "grpc_message": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "gRPC message"
+      },
+
+      "kafka_topics": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Kafka topics"
+      },
+      "queues": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Queues"
+      },
+      "exchanges": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Exchanges"
+      },
+      "schemas": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Avro/Proto subject"
+      },
+      "consumer_groups": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Consumer groups"
+      },
+
+      "headings": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Заголовки/подзаголовки из комментов/README"
+      },
+      "code_blocks": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Присутствующие языки в блоке для md/ocr"
+      },
+      "table_headers": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Заголовки таблиц md/csv"
+      },
+      "links": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Локальные якоря/внешние ссылки полезны для соседей"
+      },
+      "neighbor_hints": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Только имена потенциальных соседей: таблицы/эндпойнты/классы"
+      },
+
+      "complexity": {
+        "type": "double",
+        "description": "Грубая сложность/LOC в блоке"
+      },
+      "complexity_score": {
+        "type": "double",
+        "description": "Оценка сложности кода (цикломатическая/когнитивная)"
+      },
+      "generated_code": {
+        "type": "boolean",
+        "description": "Protobuf/auto-gen код"
+      },
+      "stability": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Эвристика стабильный/часто меняющийся"
+      },
+      "compat_version": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Заявленная совместимость: Java 17, TS target"
+      },
+      "license_header": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "License header"
+      },
+      "changelog_markers": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Версии/даты в комментах"
+      },
+      "todo_fixme": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Наличие TODO/FIXME/XXX"
+      },
+
+      "secrets_refs": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Только ключи секретов, не значения"
+      },
+      "pii_fields": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Кандидаты на персональные данные"
+      },
+      "crypto_algorithms": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "AES/RSA/hash/salt/argon2/bcrypt"
+      },
+      "tls_mtls": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "TLS/MTLS включено/настройки"
+      },
+      "authn_authz": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Провайдеры, схемы, scope/roles"
+      },
+
+      "test_names": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Имена/метки/DisplayName тестов"
+      },
+      "test_fixtures": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Данные/моки/стаб-файлы"
+      },
+      "test_tags": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Теги тестов: slow/e2e/integration"
+      },
+      "assertions": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Ключевые утверждения: contains, equals, status="
+      },
+
+      "cron": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Cron выражения и job имена"
+      },
+      "schedulers": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Quartz/Spring Scheduling/Airflow DAG"
+      },
+      "timeouts_retries_backoff": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Таймауты/ретраи/backoff"
+      },
+
+      "doc_type": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "readme, adr, rfc, howto"
+      },
+      "doc_status": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "proposed/accepted/deprecated"
+      },
+      "doc_decisions": {
+        "type": "text",
+        "analyzer": "code_friendly",
+        "description": "Краткие тезисы решений"
+      },
+      "tables_schema": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Имена столбцов, типы csv/tsv/md"
+      },
+      "ocr_text": {
+        "type": "text",
+        "analyzer": "code_friendly",
+        "index": false,
+        "description": "Распознанный текст укороченный ≤2-4k символов"
+      },
+      "diagram_nodes": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Названия узлов диаграммы"
+      },
+      "diagram_edges": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Названия рёбер диаграммы"
+      },
+      "captions": {
+        "type": "text",
+        "index": false,
+        "description": "Подписи к рисункам/таблицам"
+      },
+
+      "module_path_alias": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "Модуль/воркспейс"
+      },
+      "dependency_coords": {
+        "type": "keyword",
+        "normalizer": "lower_ascii",
+        "description": "group:artifact:version / npm name@ver"
+      },
+
+      "confidence": {
+        "type": "double",
+        "description": "Интегральная уверенность пайплайна (0–1) в корректности извлечённых фактов по чанку. Считается детерминированно из проверок схемы, верификации по исходному тексту/AST, стабильности версий и полноты заполнения."
+      },
+      "self_confidence": {
+        "type": "double",
+        "description": "Самооценка LLM (0–1), которую модель возвращает вместе с результатом для данного чанка при индексации. Используется как мягкий сигнал и не может повышать итог выше ограничений верификации."
+      },
+      "freshness_score": {
+        "type": "double",
+        "description": "Оценка актуальности чанка (0–1)"
+      },
+      "llm_hint": {
+        "type": "object",
+        "enabled": false,
+        "description": "Дополнительные подсказки от LLM, не индексируются"
+      }
+    }
+
+
+     "file_size": { "type": "long" },
+      "file_lines": { "type": "integer" },
+      "file_description": { "type": "keyword", "normalizer": "lower_ascii" },
+      "file_title": { "type": "keyword", "normalizer": "lower_ascii" },
+      "file_purpose": { "type": "text", "analyzer": "code_friendly" },
+      "file_summary": { "type": "text", "analyzer": "code_friendly" },
+      "modified": { "type": "date" },
+      "extension": { "type": "keyword", "normalizer": "lower_ascii" },
+      "filename": { "type": "keyword", "normalizer": "lower_ascii" },
+      "path_parts": { "type": "keyword", "normalizer": "lower_ascii" },
+      "path_segments": { "type": "keyword", "normalizer": "lower_ascii" },
+      "mime": { "type": "keyword", "normalizer": "lower_ascii" },
+      "is_test_file": { "type": "boolean" },
+      "has_documentation": { "type": "boolean" },
+      "layer": { "type": "keyword", "normalizer": "lower_ascii" },
+      "dependency_count": { "type": "integer" },
+      "is_duplicate": { "type": "boolean" },
+
+      "lines": { "type": "integer" },
+      "size": { "type": "long" },
+      "code_ratio": { "type": "double" },
+      "description": { "type": "keyword", "normalizer": "lower_ascii" },
+      "title": { "type": "keyword", "normalizer": "lower_ascii" },
+      "purpose": { "type": "text", "analyzer": "code_friendly" },
+      "summary": { "type": "text", "analyzer": "code_friendly" },
+      "lang": { "type": "keyword", "normalizer": "lower_ascii" },
+      "kind": { "type": "keyword", "normalizer": "lower_ascii" },
+      "why_relevant": { "type": "text", "analyzer": "code_friendly" },
+      "key_points": { "type": "keyword", "normalizer": "lower_ascii" },
+      "anchors": { "type": "keyword", "normalizer": "lower_ascii" },
+      "interfaces": { "type": "keyword", "normalizer": "lower_ascii" },
+      "constraints": { "type": "keyword", "normalizer": "lower_ascii" },
+      "where": { "type": "keyword", "normalizer": "lower_ascii" },
+
+      "entities": { "type": "keyword", "normalizer": "lower_ascii", "eager_global_ordinals": true },
+      "tags": { "type": "keyword", "normalizer": "lower_ascii", "eager_global_ordinals": true },
+      "public_symbols": { "type": "keyword", "normalizer": "lower_ascii" },
+      "public_symbol_names": { "type": "keyword", "normalizer": "lower_ascii" },
+      "io": { "type": "keyword", "normalizer": "lower_ascii" },
+      "apis": { "type": "keyword", "normalizer": "lower_ascii" },
+      "config_keys": { "type": "keyword", "normalizer": "lower_ascii" },
+      "feature_flags": { "type": "keyword", "normalizer": "lower_ascii" },
+      "security_flags": { "type": "keyword", "normalizer": "lower_ascii" },
+      "exceptions_errors": { "type": "keyword", "normalizer": "lower_ascii" },
+      "deps_imports": { "type": "keyword", "normalizer": "lower_ascii" },
+      "references_local": { "type": "keyword", "normalizer": "lower_ascii" },
+      "bm25_boost_terms": { "type": "keyword", "normalizer": "lower_ascii" },
+      "mmr_group": { "type": "keyword", "normalizer": "lower_ascii" },
+      "llm_version": { "type": "keyword", "normalizer": "lower_ascii" },
+      "text_hash": { "type": "keyword", "normalizer": "lower_ascii" },
+      "updated_at": { "type": "date" },
+
+      "likely_queries": { "type": "keyword", "normalizer": "lower_ascii" },
+      "domain_objects": { "type": "keyword", "normalizer": "lower_ascii" },
+      "ownership": { "type": "keyword", "normalizer": "lower_ascii" },
+      "deprecation": { "type": "boolean" },
+      "deprecation_reason": { "type": "text", "index": false },
+      "runtime_envs": { "type": "keyword", "normalizer": "lower_ascii" },
+      "perf_hints": { "type": "keyword", "normalizer": "lower_ascii" },
+      "observability": { "type": "keyword", "normalizer": "lower_ascii" },
+      "permissions_roles": { "type": "keyword", "normalizer": "lower_ascii" },
+
+      "java_package": { "type": "keyword", "normalizer": "lower_ascii" },
+      "java_annotations": { "type": "keyword", "normalizer": "lower_ascii" },
+      "spring_endpoints": { "type": "keyword", "normalizer": "lower_ascii" },
+      "jpa_entities": { "type": "keyword", "normalizer": "lower_ascii" },
+      "jpa_queries": { "type": "keyword", "normalizer": "lower_ascii" },
+      "gradle_tasks": { "type": "keyword", "normalizer": "lower_ascii" },
+      "gradle_deps": { "type": "keyword", "normalizer": "lower_ascii" },
+
+      "ts_exports": { "type": "keyword", "normalizer": "lower_ascii" },
+      "ts_types": { "type": "keyword", "normalizer": "lower_ascii" },
+      "node_routes": { "type": "keyword", "normalizer": "lower_ascii" },
+      "react_components": { "type": "keyword", "normalizer": "lower_ascii" },
+      "package_scripts": { "type": "keyword", "normalizer": "lower_ascii" },
+      "path_aliases": { "type": "keyword", "normalizer": "lower_ascii" },
+
+      "sql_kind": { "type": "keyword", "normalizer": "lower_ascii" },
+      "sql_vendor": { "type": "keyword", "normalizer": "lower_ascii" },
+      "sql_ops": { "type": "keyword", "normalizer": "lower_ascii" },
+      "sql_objects": { "type": "keyword", "normalizer": "lower_ascii" },
+      "sql_tables": { "type": "keyword", "normalizer": "lower_ascii", "eager_global_ordinals": true },
+      "sql_columns": { "type": "keyword", "normalizer": "lower_ascii" },
+      "sql_relations": { "type": "keyword", "normalizer": "lower_ascii" },
+      "sql_params": { "type": "keyword", "normalizer": "lower_ascii" },
+      "sql_effects": { "type": "keyword", "normalizer": "lower_ascii" },
+
+      "config_keys_yaml": { "type": "keyword", "normalizer": "lower_ascii" },
+      "k8s_kind": { "type": "keyword", "normalizer": "lower_ascii" },
+      "k8s_api_version": { "type": "keyword", "normalizer": "lower_ascii" },
+      "k8s_metadata_name": { "type": "keyword", "normalizer": "lower_ascii" },
+      "k8s_image": { "type": "keyword", "normalizer": "lower_ascii" },
+      "k8s_env": { "type": "keyword", "normalizer": "lower_ascii" },
+      "k8s_ports": { "type": "keyword", "normalizer": "lower_ascii" },
+      "k8s_resources": { "type": "keyword", "normalizer": "lower_ascii" },
+      "k8s_selectors": { "type": "keyword", "normalizer": "lower_ascii" },
+      "k8s_labels": { "type": "keyword", "normalizer": "lower_ascii" },
+      "ci_jobs": { "type": "keyword", "normalizer": "lower_ascii" },
+      "ci_steps": { "type": "keyword", "normalizer": "lower_ascii" },
+      "ci_cron": { "type": "keyword", "normalizer": "lower_ascii" },
+      "helm_values_refs": { "type": "keyword", "normalizer": "lower_ascii" },
+
+      "openapi_paths": { "type": "keyword", "normalizer": "lower_ascii" },
+      "graphql_schema": { "type": "keyword", "normalizer": "lower_ascii" },
+      "grpc_service": { "type": "keyword", "normalizer": "lower_ascii" },
+      "grpc_method": { "type": "keyword", "normalizer": "lower_ascii" },
+      "grpc_message": { "type": "keyword", "normalizer": "lower_ascii" },
+
+      "kafka_topics": { "type": "keyword", "normalizer": "lower_ascii" },
+      "queues": { "type": "keyword", "normalizer": "lower_ascii" },
+      "exchanges": { "type": "keyword", "normalizer": "lower_ascii" },
+      "schemas": { "type": "keyword", "normalizer": "lower_ascii" },
+      "consumer_groups": { "type": "keyword", "normalizer": "lower_ascii" },
+
+      "headings": { "type": "keyword", "normalizer": "lower_ascii" },
+      "code_blocks": { "type": "keyword", "normalizer": "lower_ascii" },
+      "table_headers": { "type": "keyword", "normalizer": "lower_ascii" },
+      "links": { "type": "keyword", "normalizer": "lower_ascii" },
+      "neighbor_hints": { "type": "keyword", "normalizer": "lower_ascii" },
+
+      "complexity": { "type": "double" },
+      "complexity_score": { "type": "double" },
+      "generated_code": { "type": "boolean" },
+      "stability": { "type": "keyword", "normalizer": "lower_ascii" },
+      "compat_version": { "type": "keyword", "normalizer": "lower_ascii" },
+      "license_header": { "type": "keyword", "normalizer": "lower_ascii" },
+      "changelog_markers": { "type": "keyword", "normalizer": "lower_ascii" },
+      "todo_fixme": { "type": "keyword", "normalizer": "lower_ascii" },
+
+      "secrets_refs": { "type": "keyword", "normalizer": "lower_ascii" },
+      "pii_fields": { "type": "keyword", "normalizer": "lower_ascii" },
+      "crypto_algorithms": { "type": "keyword", "normalizer": "lower_ascii" },
+      "tls_mtls": { "type": "keyword", "normalizer": "lower_ascii" },
+      "authn_authz": { "type": "keyword", "normalizer": "lower_ascii" },
+
+      "test_names": { "type": "keyword", "normalizer": "lower_ascii" },
+      "test_fixtures": { "type": "keyword", "normalizer": "lower_ascii" },
+      "test_tags": { "type": "keyword", "normalizer": "lower_ascii" },
+      "assertions": { "type": "keyword", "normalizer": "lower_ascii" },
+
+      "cron": { "type": "keyword", "normalizer": "lower_ascii" },
+      "schedulers": { "type": "keyword", "normalizer": "lower_ascii" },
+      "timeouts_retries_backoff": { "type": "keyword", "normalizer": "lower_ascii" },
+
+      "doc_type": { "type": "keyword", "normalizer": "lower_ascii" },
+      "doc_status": { "type": "keyword", "normalizer": "lower_ascii" },
+      "doc_decisions": { "type": "text", "analyzer": "code_friendly" },
+      "tables_schema": { "type": "keyword", "normalizer": "lower_ascii" },
+      "ocr_text": { "type": "text", "analyzer": "code_friendly", "index": false },
+      "diagram_nodes": { "type": "keyword", "normalizer": "lower_ascii" },
+      "diagram_edges": { "type": "keyword", "normalizer": "lower_ascii" },
+      "captions": { "type": "text", "index": false },
+
+      "module_path_alias": { "type": "keyword", "normalizer": "lower_ascii" },
+      "dependency_coords": { "type": "keyword", "normalizer": "lower_ascii" },
+
+      "confidence": { "type": "double" },
+      "self_confidence": { "type": "double" },
+      "freshness_score": { "type": "double" },
+      "llm_hint": { "type": "object", "enabled": false }

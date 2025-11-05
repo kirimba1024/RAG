@@ -1,9 +1,0 @@
-sg.localhost {
-    reverse_proxy sourcegraph:7080 {
-        header_up Host {host}
-        header_up X-Forwarded-Host {host}
-        header_up X-Forwarded-Proto https
-    }
-    tls internal
-}
-

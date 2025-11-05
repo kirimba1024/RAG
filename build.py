@@ -1,21 +1,101 @@
 import time
 from pathlib import Path
 from datetime import datetime, UTC
+from typing import List, Dict, Any
 
 from elasticsearch import Elasticsearch, helpers
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+from anthropic import Anthropic
 
 from utils import (
-    ES_URL, ES_INDEX,
-    EMBED_MODEL, REPOS_SAFE_ROOT, git_blob_oid, setup_logging, is_ignored, to_posix
+    ES_URL, ES_INDEX, ES_MANIFEST_INDEX,
+    EMBED_MODEL, REPOS_SAFE_ROOT, git_blob_oid, setup_logging, is_ignored, to_posix,
+    CLAUDE_MODEL, ANTHROPIC_API_KEY, LANG_BY_EXT, load_prompt
 )
-from build_llm import analyze_file, LLM_VERSION
+from tools import SPLIT_BLOCKS_TOOL, DESCRIBE_BLOCK_TOOL
 
 logger = setup_logging(Path(__file__).stem)
 
 ES = Elasticsearch(ES_URL, request_timeout=30, max_retries=3, retry_on_timeout=True)
+CLAUDE = Anthropic(api_key=ANTHROPIC_API_KEY)
 
 EMBEDDING = HuggingFaceEmbedding(EMBED_MODEL, normalize=True)
+
+LLM_VERSION = "v1"
+
+def split_file_into_blocks(text: str, lang: str, rel_path: str) -> List[Dict[str, Any]]:
+    prompt_template = load_prompt("prompts/split_blocks.txt")
+    system_prompt = prompt_template.format(lang=lang, rel_path=rel_path)
+    user_content = f"Разбей файл:\n\n```{lang}\n{text}\n```"
+    tools = [SPLIT_BLOCKS_TOOL]
+    response = CLAUDE.messages.create(
+        model=CLAUDE_MODEL,
+        max_tokens=4096,
+        temperature=0,
+        system=system_prompt,
+        messages=[{"role": "user", "content": user_content}],
+        tools=tools
+    )
+    tool_use = None
+    for block in response.content:
+        if block.type == "tool_use" and block.name == "split_blocks":
+            tool_use = block
+            break
+    if not tool_use:
+        logger.error(f"Не получен tool_use для split_blocks: {rel_path}")
+        return []
+    blocks = tool_use.input["blocks"]
+    logger.info(f"Разбито на {len(blocks)} блоков: {rel_path}")
+    return blocks
+
+def describe_block(block_text: str, lang: str, rel_path: str, block_idx: int) -> Dict[str, Any]:
+    prompt_template = load_prompt("prompts/describe_block.txt")
+    system_prompt = prompt_template.format(lang=lang, rel_path=rel_path, block_idx=block_idx)
+    user_content = f"Блок:\n\n```{lang}\n{block_text}\n```"
+    tools = [DESCRIBE_BLOCK_TOOL]
+    response = CLAUDE.messages.create(
+        model=CLAUDE_MODEL,
+        max_tokens=4096,
+        temperature=0,
+        system=system_prompt,
+        messages=[{"role": "user", "content": user_content}],
+        tools=tools
+    )
+    tool_use = None
+    for block in response.content:
+        if block.type == "tool_use" and block.name == "describe_block":
+            tool_use = block
+            break
+    if not tool_use:
+        logger.error(f"Не получен tool_use для describe_block: {rel_path} блок #{block_idx}")
+        return {}
+    return tool_use.input
+
+def analyze_file(rel_path: str) -> List[Dict[str, Any]]:
+    full_path = REPOS_SAFE_ROOT / rel_path
+    if not full_path.exists():
+        return []
+    text = full_path.read_text(encoding='utf-8', errors='ignore')
+    ext = full_path.suffix.lower()
+    lang = LANG_BY_EXT.get(ext, "text")
+    blocks = split_file_into_blocks(text, lang, rel_path)
+    chunks = []
+    for i, block_def in enumerate(blocks):
+        start = block_def["start_line"]
+        end = block_def["end_line"]
+        lines = text.split('\n')
+        block_text = '\n'.join(lines[start-1:end])
+        meta = describe_block(block_text, lang, rel_path, i)
+        chunks.append({
+            "start_line": start,
+            "end_line": end,
+            "kind": block_def.get("kind", "other"),
+            "lang": lang,
+            "text": block_text,
+            **meta
+        })
+    logger.info(f"Проанализировано {len(chunks)} чанков для {rel_path}")
+    return chunks
 
 def get_file_chunks(rel_path):
     return analyze_file(rel_path)
