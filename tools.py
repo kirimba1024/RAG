@@ -61,18 +61,8 @@ SPLIT_BLOCKS_TOOL = {
     "input_schema": {
         "type": "object",
         "additionalProperties": False,
-        "required": ["name","title","description","summary","detailed","language","purpose","file_type","tags","key_points","blocks"],
+        "required": ["blocks"],
         "properties": {
-            "name":        {"type": "string", "minLength": 1, "maxLength": 32, "pattern": "^\\S+$", "description": "Имя файла одним словом, отражающее суть."},
-            "title":       {"type": "string", "minLength": 1, "maxLength": 128, "description": "Заголовок, кратко описывающий назначение файла."},
-            "description": {"type": "string", "minLength": 1, "maxLength": 256, "description": "Одна фраза о содержимом файла."},
-            "summary":     {"type": "string", "minLength": 1, "maxLength": 1024, "description": "Краткое содержание и цель файла."},
-            "detailed":    {"type": "string", "minLength": 1, "maxLength": 2048, "description": "Подробное описание структуры и смысла."},
-            "language":    {"type": "string", "minLength": 1, "maxLength": 32, "description": "Основной язык/диалект (java, ts, yaml, md, sql…)."},
-            "purpose":     {"type": "string", "minLength": 1, "maxLength": 240, "description": "Зачем нужен файл."},
-            "file_type":   {"type": "string", "enum": ["code", "markup", "config", "schema", "doc", "data", "binary", "mixed"], "description": "Общий тип содержимого."},
-            "tags":        {"type": "array", "minItems": 1, "uniqueItems": True, "items": {"type": "string", "minLength": 1, "maxLength": 40}, "maxItems": 10, "description": "Главные ключевые теги, метки."},
-            "key_points":  {"type": "array", "minItems": 1, "uniqueItems": True, "items": {"type": "string", "minLength": 1, "maxLength": 80}, "maxItems": 3, "description": "Ключевые тезисы."},
             "blocks": {
                 "type": "array",
                 "minItems": 1,
@@ -136,5 +126,78 @@ DESCRIBE_BLOCK_TOOL = {
             }
         },
         "required": ["chunk_title", "chunk_summary", "tags", "entities", "public_symbols", "io", "security_flags", "likely_queries"]
+    }
+}
+
+DESCRIBE_FILE_TOOL = {
+    "name": "describe_file",
+    "description": "Верни один объект по схеме ниже.",
+    "input_schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "name",
+            "title",
+            "description",
+            "summary",
+            "detailed",
+            "language",
+            "purpose",
+            "file_type",
+            "tags",
+            "key_points",
+            "has_documentation",
+            "layer",
+            "bm25_boost_terms",
+            "likely_queries_file",
+            "domain_objects",
+            "complexity",
+            "confidence",
+            "vulnerabilities",
+            "secrets_found",
+            "table_columns",
+            "improvements",
+            "potential_bugs",
+            "function_names",
+            "class_names",
+            "variable_names",
+            "notes",
+            "conclusions",
+            "open_questions",
+            "highlights",
+            "anchors"
+        ],
+        "properties": {
+            "name": {"type": "string", "minLength": 1, "maxLength": 32, "pattern": "^\\S+$", "description": "Имя файла одним словом, отражающее суть."},
+            "title": {"type": "string", "minLength": 1, "maxLength": 128, "description": "Заголовок, кратко описывающий назначение файла."},
+            "description": {"type": "string", "minLength": 1, "maxLength": 256, "description": "Одна фраза о содержимом файла."},
+            "summary": {"type": "string", "minLength": 1, "maxLength": 1024, "description": "Краткое содержание и цель файла."},
+            "detailed": {"type": "string", "minLength": 1, "maxLength": 2048, "description": "Подробное описание структуры и смысла."},
+            "language": {"type": "string", "minLength": 1, "maxLength": 32, "description": "Основной язык/диалект (java, ts, yaml, md, sql…)."},
+            "purpose": {"type": "string", "minLength": 1, "maxLength": 240, "description": "Зачем нужен файл."},
+            "file_type": {"type": "string", "enum": ["code", "markup", "config", "schema", "doc", "data", "binary", "mixed"], "description": "Общий тип содержимого."},
+            "tags": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 40}, "maxItems": 10, "description": "Главные ключевые теги, метки."},
+            "key_points": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 80}, "maxItems": 3, "description": "Ключевые тезисы."},
+            "has_documentation": {"type": "boolean", "description": "Есть ли в файле заметная документация/комментарии."},
+            "layer": {"type": "string", "minLength": 1, "maxLength": 32, "description": "Архитектурный слой: frontend/backend/data/ops и т.п."},
+            "bm25_boost_terms": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 40}, "uniqueItems": True, "maxItems": 20, "description": "Термы для буста BM25."},
+            "likely_queries_file": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 120}, "uniqueItems": True, "maxItems": 10, "description": "Ожидаемые запросы по файлу."},
+            "domain_objects": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 40}, "uniqueItems": True, "maxItems": 30, "description": "Предметные сущности."},
+            "complexity": {"type": "number", "minimum": 0, "description": "Оценка сложности/LOC."},
+            "confidence": {"type": "number", "minimum": 0, "maximum": 1, "description": "Уверенность в корректности извлечённых фактов (0–1)."},
+            "vulnerabilities": {"type": "string", "maxLength": 4000, "description": "Список уязвимостей (краткие описания)."},
+            "secrets_found": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 128}, "uniqueItems": True, "maxItems": 200, "description": "Найденные секреты."},
+            "table_columns": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 64}, "uniqueItems": True, "maxItems": 400, "description": "Имена столбцов, если это таблица/SQL."},
+            "improvements": {"type": "string", "maxLength": 4000, "description": "Предложения по доработке."},
+            "potential_bugs": {"type": "string", "maxLength": 4000, "description": "Возможные баги."},
+            "function_names": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 128}, "uniqueItems": True, "maxItems": 800, "description": "Имена функций/методов."},
+            "class_names": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 128}, "uniqueItems": True, "maxItems": 400, "description": "Имена классов/интерфейсов/структур."},
+            "variable_names": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 128}, "uniqueItems": True, "maxItems": 2000, "description": "Имена переменных и констант."},
+            "notes": {"type": "string", "maxLength": 4000, "description": "Полезные заметки."},
+            "conclusions": {"type": "string", "maxLength": 4000, "description": "Выводы по файлу."},
+            "open_questions": {"type": "string", "maxLength": 4000, "description": "Вопросы и непонятности."},
+            "highlights": {"type": "string", "maxLength": 1000, "description": "Самое важное по файлу (коротко)."},
+            "anchors": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 80}, "uniqueItems": True, "maxItems": 100, "description": "Якоря для поиска."}
+        }
     }
 }

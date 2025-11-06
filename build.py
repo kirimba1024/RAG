@@ -12,7 +12,7 @@ from utils import (
     EMBED_MODEL, REPOS_SAFE_ROOT, git_blob_oid, setup_logging, is_ignored, to_posix,
     CLAUDE_MODEL, ANTHROPIC_API_KEY, LANG_BY_EXT, load_prompt
 )
-from tools import SPLIT_BLOCKS_TOOL, DESCRIBE_BLOCK_TOOL
+from tools import SPLIT_BLOCKS_TOOL, DESCRIBE_BLOCK_TOOL, DESCRIBE_FILE_TOOL
 
 logger = setup_logging(Path(__file__).stem)
 
@@ -21,7 +21,6 @@ CLAUDE = Anthropic(api_key=ANTHROPIC_API_KEY)
 
 EMBEDDING = HuggingFaceEmbedding(EMBED_MODEL, normalize=True)
 
-LLM_VERSION = "v1"
 
 def split_file_into_blocks(text: str, lang: str, rel_path: str) -> tuple[Dict[str, Any], List[Dict[str, Any]]]:
     prompt_template = load_prompt("prompts/split_blocks.txt")
@@ -72,6 +71,22 @@ def describe_block(block_text: str, lang: str, rel_path: str, block_idx: int) ->
         return {}
     return tool_use.input
 
+def describe_file(file_text: str, lang: str, rel_path: str) -> Dict[str, Any]:
+    system_prompt = load_prompt("prompts/describe_file.txt").format(rel_path=rel_path)
+    user_content = f"Файл:\n\n```{lang}\n{file_text}\n```"
+    response = CLAUDE.messages.create(
+        model=CLAUDE_MODEL,
+        max_tokens=4096,
+        temperature=0,
+        system=system_prompt,
+        messages=[{"role": "user", "content": user_content}],
+        tools=[DESCRIBE_FILE_TOOL]
+    )
+    for block in response.content:
+        if block.type == "tool_use" and block.name == "describe_file":
+            return block.input
+    return {}
+
 def analyze_file(rel_path: str) -> tuple[Dict[str, Any], List[Dict[str, Any]], str, int]:
     full_path = REPOS_SAFE_ROOT / rel_path
     if not full_path.exists():
@@ -99,8 +114,6 @@ def analyze_file(rel_path: str) -> tuple[Dict[str, Any], List[Dict[str, Any]], s
     logger.info(f"Проанализировано {len(chunks)} чанков для {rel_path}")
     return file_meta, chunks, lang, (text.count('\n') + 1 if text else 0)
 
-def get_file_chunks(rel_path):
-    return analyze_file(rel_path)
 
 def delete_es_chunks(rel_path):
     query = {"term": {"path": rel_path}}
@@ -143,7 +156,7 @@ def chunks_to_actions(chunks: list[dict], rel_path: str, file_hash: str) -> list
             "io": chunk.get("io", []),
             "security_flags": chunk.get("security_flags", []),
             "likely_queries": chunk.get("likely_queries", []),
-            "llm_version": LLM_VERSION,
+            "llm_version": CLAUDE_MODEL,
             "updated_at": datetime.now(UTC).isoformat(),
         })
     return actions
@@ -156,7 +169,7 @@ def upsert_es_file(rel_path: str, new_hash: str, file_meta: Dict[str, Any], lang
         "language": lang,
         "lines": lines,
         "chunk_count": chunk_count,
-        "updated": now,
+        "updated_at": now,
     }
     for k in ["name","title","description","summary","detailed","purpose","file_type","tags","key_points"]:
         if k in file_meta:
@@ -165,10 +178,14 @@ def upsert_es_file(rel_path: str, new_hash: str, file_meta: Dict[str, Any], lang
 
 def index_es_file(rel_path, new_hash):
     t0 = time.time()
-    file_meta, chunks, lang, lines = get_file_chunks(rel_path)
+    file_meta, chunks, lang, lines = analyze_file(rel_path)
+    full_path = REPOS_SAFE_ROOT / rel_path
+    file_text = full_path.read_text(encoding='utf-8', errors='ignore') if full_path.exists() else ""
+    file_level = describe_file(file_text, lang, rel_path) if file_text else {}
     actions = chunks_to_actions(chunks, rel_path, new_hash)
     helpers.bulk(ES.options(request_timeout=120), actions, chunk_size=2000, raise_on_error=True)
-    upsert_es_file(rel_path, new_hash, file_meta, lang, lines, len(chunks))
+    merged = {**file_meta, **file_level}
+    upsert_es_file(rel_path, new_hash, merged, lang, lines, len(chunks))
     logger.info(f"➕ Added {rel_path} ({len(chunks)} chunks) in {time.time()-t0:.2f}s")
 
 def get_es_files():
@@ -176,7 +193,8 @@ def get_es_files():
     response = ES.search(index=ES_INDEX_FILES, body=query)
     result = {}
     for hit in response.get("hits", {}).get("hits", []):
-        result[hit["_id"]] = hit["_source"].get("hash")
+        src = hit.get("_source", {})
+        result[hit["_id"]] = src.get("hash")
     return result
 
 def process_files():
