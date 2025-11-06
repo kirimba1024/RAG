@@ -19,7 +19,7 @@ def execute_tool(tool_name, tool_input):
 
 MAIN_SEARCH_TOOL = {
     "name": "main_search",
-    "description": "Семантический поиск по коду",
+    "description": "Семантический поиск по коду.",
     "input_schema": {
         "type": "object",
         "properties": {
@@ -33,7 +33,7 @@ MAIN_SEARCH_TOOL = {
 
 CODE_STATS_TOOL = {
     "name": "code_stats",
-    "description": "Базовая статистика по кодовой базе",
+    "description": "Базовая статистика по кодовой базе.",
     "input_schema": {
         "type": "object",
         "properties": {
@@ -45,7 +45,7 @@ CODE_STATS_TOOL = {
 
 EXECUTE_COMMAND_TOOL = {
     "name": "execute_command",
-    "description": "Выполнение команд в изолированном контейнере",
+    "description": "Выполнение команд в изолированном контейнере.",
     "input_schema": {
         "type": "object",
         "properties": {
@@ -83,54 +83,8 @@ SPLIT_BLOCKS_TOOL = {
     }
 }
 
-
-DESCRIBE_BLOCK_TOOL = {
-    "name": "describe_block",
-    "description": "Возвращает метаданные блока кода",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "chunk_title": {"type": "string"},
-            "chunk_summary": {"type": "string"},
-            "tags": {
-                "type": "array",
-                "items": {"type": "string"}
-            },
-            "entities": {
-                "type": "array",
-                "items": {"type": "string"}
-            },
-            "public_symbols": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "name": {"type": "string"},
-                        "kind": {"type": "string"},
-                        "signature": {"type": "string"}
-                    },
-                    "required": ["name", "kind"]
-                }
-            },
-            "io": {
-                "type": "array",
-                "items": {"type": "string"}
-            },
-            "security_flags": {
-                "type": "array",
-                "items": {"type": "string", "enum": ["pii", "secrets", "crypto", "authz", "audit"]}
-            },
-            "likely_queries": {
-                "type": "array",
-                "items": {"type": "string"}
-            }
-        },
-        "required": ["chunk_title", "chunk_summary", "tags", "entities", "public_symbols", "io", "security_flags", "likely_queries"]
-    }
-}
-
-DESCRIBE_FILE_TOOL = {
-    "name": "describe_file",
+DESCRIBE_TOOL = {
+    "name": "describe_tool",
     "description": "Верни один объект по схеме ниже.",
     "input_schema": {
         "type": "object",
@@ -146,10 +100,19 @@ DESCRIBE_FILE_TOOL = {
             "file_type",
             "tags",
             "key_points",
+            "http_endpoints",
+            "apis",
+            "entities",
+            "imports",
+            "dependencies",
+            "permissions_roles",
+            "config_keys",
+            "feature_flags",
+            "todos",
             "has_documentation",
             "layer",
             "bm25_boost_terms",
-            "likely_queries_file",
+            "likely_queries",
             "domain_objects",
             "complexity",
             "confidence",
@@ -161,6 +124,9 @@ DESCRIBE_FILE_TOOL = {
             "function_names",
             "class_names",
             "variable_names",
+            "io",
+            "symbols",
+            "security_flags",
             "notes",
             "conclusions",
             "open_questions",
@@ -168,20 +134,33 @@ DESCRIBE_FILE_TOOL = {
             "anchors"
         ],
         "properties": {
-            "name": {"type": "string", "minLength": 1, "maxLength": 32, "pattern": "^\\S+$", "description": "Имя файла одним словом, отражающее суть."},
-            "title": {"type": "string", "minLength": 1, "maxLength": 128, "description": "Заголовок, кратко описывающий назначение файла."},
-            "description": {"type": "string", "minLength": 1, "maxLength": 256, "description": "Одна фраза о содержимом файла."},
-            "summary": {"type": "string", "minLength": 1, "maxLength": 1024, "description": "Краткое содержание и цель файла."},
+            "name": {"type": "string", "minLength": 1, "maxLength": 32, "pattern": "^\\S+$", "description": "Имя одним словом, отражающее суть."},
+            "title": {"type": "string", "minLength": 1, "maxLength": 128, "description": "Заголовок, кратко описывающий назначение."},
+            "description": {"type": "string", "minLength": 1, "maxLength": 256, "description": "Одна фраза о содержимом."},
+            "summary": {"type": "string", "minLength": 1, "maxLength": 1024, "description": "Краткое содержание и цель."},
             "detailed": {"type": "string", "minLength": 1, "maxLength": 2048, "description": "Подробное описание структуры и смысла."},
             "language": {"type": "string", "minLength": 1, "maxLength": 32, "description": "Основной язык/диалект (java, ts, yaml, md, sql…)."},
             "purpose": {"type": "string", "minLength": 1, "maxLength": 240, "description": "Зачем нужен файл."},
             "file_type": {"type": "string", "enum": ["code", "markup", "config", "schema", "doc", "data", "binary", "mixed"], "description": "Общий тип содержимого."},
             "tags": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 40}, "maxItems": 10, "description": "Главные ключевые теги, метки."},
             "key_points": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 80}, "maxItems": 3, "description": "Ключевые тезисы."},
+            "http_endpoints": { "type": "array", "items": {"type": "string"}, "description": "HTTP endpoints (method path)"},
+            "apis": { "type": "array", "items": {"type": "string"}, "description": "API спецификации/идентификаторы" },
+            "entities": { "type": "array", "items": {"type": "string"}, "description": "Сущности/доменные объекты" },
+            "imports": { "type": "array", "items": {"type": "string"}, "description": "Импорты" },
+            "dependencies": { "type": "array", "items": {"type": "string"}, "description": "Зависимости" },
+            "permissions_roles": { "type": "array", "items": {"type": "string"}, "description": "Права/роли" },
+            "config_keys": { "type": "array", "items": {"type": "string"}, "description": "Ключи конфигов" },
+            "feature_flags": { "type": "array", "items": {"type": "string"}, "description": "Фичефлаги" },
+            "todos": { "type": "array", "items": {"type": "string"}, "description": "TODO/FIXME/XXX" },
+            "edges": { "type": "array", "items": { "type": "string" }, "description": "Функциональные зависимости для графа (кто вызывает/зависит/использует). Формат: typeA@nameA→typeB@nameB, напр. python-function@foo→sql-select@get_users." },
+            "likely_queries": { "type": "array", "items": {"type": "string"}, "description": "Ожидаемые вопросы по файлу." },
+            "io": { "type": "array", "items": {"type": "string"}, "description": "I/O артефакты: таблицы, топики, файлы, URLs." },
+            "symbols": { "type": "array", "items": {"type": "string"}, "description": "Символы/идентификаторы (универсально)." },
+            "security_flags": { "type": "array", "items": {"type": "string", "enum": ["pii","secrets","crypto","authz","audit"]}, "description": "Флаги безопасности." },
             "has_documentation": {"type": "boolean", "description": "Есть ли в файле заметная документация/комментарии."},
             "layer": {"type": "string", "minLength": 1, "maxLength": 32, "description": "Архитектурный слой: frontend/backend/data/ops и т.п."},
             "bm25_boost_terms": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 40}, "uniqueItems": True, "maxItems": 20, "description": "Термы для буста BM25."},
-            "likely_queries_file": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 120}, "uniqueItems": True, "maxItems": 10, "description": "Ожидаемые запросы по файлу."},
             "domain_objects": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 40}, "uniqueItems": True, "maxItems": 30, "description": "Предметные сущности."},
             "complexity": {"type": "number", "minimum": 0, "description": "Оценка сложности/LOC."},
             "confidence": {"type": "number", "minimum": 0, "maximum": 1, "description": "Уверенность в корректности извлечённых фактов (0–1)."},

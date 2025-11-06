@@ -9,11 +9,11 @@ from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from anthropic import Anthropic
 
 from utils import (
-    ES_URL, ES_INDEX_CHUNKS, ES_INDEX_FILES,
+    ES_URL, ES_INDEX_CHUNKS,
     EMBED_MODEL, REPOS_SAFE_ROOT, git_blob_oid, setup_logging, is_ignored, to_posix,
     CLAUDE_MODEL, ANTHROPIC_API_KEY, LANG_BY_EXT, load_prompt
 )
-from tools import SPLIT_BLOCKS_TOOL, DESCRIBE_BLOCK_TOOL, DESCRIBE_FILE_TOOL
+from tools import SPLIT_BLOCKS_TOOL, DESCRIBE_TOOL
 
 logger = setup_logging(Path(__file__).stem)
 
@@ -23,8 +23,7 @@ CLAUDE = Anthropic(api_key=ANTHROPIC_API_KEY)
 EMBEDDING = HuggingFaceEmbedding(EMBED_MODEL, normalize=True)
 
 SPLIT_SYSTEM = load_prompt("prompts/split_blocks.txt")
-DESCRIBE_BLOCK_SYSTEM = load_prompt("prompts/describe_block.txt")
-DESCRIBE_FILE_SYSTEM = load_prompt("prompts/describe_file.txt")
+DESCRIBE_SYSTEM = load_prompt("prompts/describe.txt")
 
 def warm_claude_cache():
     CLAUDE.messages.create(
@@ -39,17 +38,9 @@ def warm_claude_cache():
         model=CLAUDE_MODEL,
         max_tokens=128,
         temperature=0,
-        system=DESCRIBE_BLOCK_SYSTEM,
+        system=DESCRIBE_SYSTEM,
         messages=[{"role": "user", "content": "warm"}],
-        tools=[DESCRIBE_BLOCK_TOOL]
-    )
-    CLAUDE.messages.create(
-        model=CLAUDE_MODEL,
-        max_tokens=128,
-        temperature=0,
-        system=DESCRIBE_FILE_SYSTEM,
-        messages=[{"role": "user", "content": "warm"}],
-        tools=[DESCRIBE_FILE_TOOL]
+        tools=[DESCRIBE_TOOL]
     )
 
 def delete_es_chunks(rel_path):
@@ -62,8 +53,7 @@ def delete_es_chunks(rel_path):
         allow_no_indices=True
     )
 
-def delete_es_file(rel_path: str):
-    ES.options(request_timeout=60).delete(index=ES_INDEX_FILES, id=rel_path, ignore=[404])
+ 
 
 
 def index_es_file(rel_path, new_hash):
@@ -80,6 +70,7 @@ def index_es_file(rel_path, new_hash):
     file_extension = full_path.suffix.lower()[1:] if full_path.suffix else ""
     file_name = full_path.name
     file_mime = mimetypes.guess_type(str(full_path))[0] or ""
+    now_iso = datetime.now(UTC).isoformat()
     response = CLAUDE.messages.create(
         model=CLAUDE_MODEL,
         max_tokens=4096,
@@ -89,11 +80,13 @@ def index_es_file(rel_path, new_hash):
         tools=[SPLIT_BLOCKS_TOOL]
     )
     blocks = response.content[0].input["blocks"]
-    logger.info(f"Разбито на {len(blocks)} блоков: {rel_path}")
+    lines = file_text.count('\n') + 1
+    logger.info(f"Разбито на {len(blocks)} блоков (+whole): {rel_path}")
+    blocks = [{"start_line": 1, "end_line": lines, "title": "whole", "kind": "whole"}] + blocks
+    total = len(blocks)
     chunks = []
     lines_list = file_text.split('\n')
-    total = len(blocks)
-    for i, block_def in enumerate(blocks, start=1):
+    for i, block_def in enumerate(blocks, start=0):
         start = block_def["start_line"]
         end = block_def["end_line"]
         block_text = '\n'.join(lines_list[start-1:end])
@@ -101,9 +94,9 @@ def index_es_file(rel_path, new_hash):
             model=CLAUDE_MODEL,
             max_tokens=4096,
             temperature=0,
-            system=DESCRIBE_BLOCK_SYSTEM,
+            system=DESCRIBE_SYSTEM,
             messages=[{"role": "user", "content": block_text}],
-            tools=[DESCRIBE_BLOCK_TOOL]
+            tools=[DESCRIBE_TOOL]
         )
         meta = block_response.content[0].input
         embedding = EMBEDDING.get_text_embedding(block_text)
@@ -119,58 +112,29 @@ def index_es_file(rel_path, new_hash):
             "chunks": total,
             "start_line": start,
             "end_line": end,
-            "kind": block_def.get("kind", ""),
+            "kind": block_def["kind"],
             "lang": lang,
             "size": file_size,
             "lines": lines,
             "extension": file_extension,
             "filename": file_name,
             "mime": file_mime,
-            "created_at": datetime.now(UTC).isoformat(),
-            **meta,
+            "created_at": now_iso,
             "llm_version": CLAUDE_MODEL,
-            "updated_at": datetime.now(UTC).isoformat(),
+            "updated_at": now_iso,
+            **meta,
         })
     logger.info(f"Проанализировано {len(chunks)} чанков для {rel_path}")
-    lines = file_text.count('\n') + 1
-    file_response = CLAUDE.messages.create(
-        model=CLAUDE_MODEL,
-        max_tokens=4096,
-        temperature=0,
-        system=DESCRIBE_FILE_SYSTEM,
-        messages=[{"role": "user", "content": file_text}],
-        tools=[DESCRIBE_FILE_TOOL]
-    )
-    file_level = file_response.content[0].input
-    file_embedding = EMBEDDING.get_text_embedding(file_text)
     helpers.bulk(ES.options(request_timeout=120), chunks, chunk_size=2000, raise_on_error=True)
-    doc = {
-        "path": rel_path,
-        "hash": new_hash,
-        "text": file_text,
-        "embedding": file_embedding,
-        "llm_version": CLAUDE_MODEL,
-        "language": lang,
-        "lines": lines,
-        "chunk_count": len(chunks),
-        "updated_at": datetime.now(UTC).isoformat(),
-        "created_at": datetime.now(UTC).isoformat(),
-        "size": file_size,
-        "extension": file_extension,
-        "filename": file_name,
-        "mime": file_mime,
-        **file_level,
-    }
-    ES.index(index=ES_INDEX_FILES, id=rel_path, document=doc, refresh=True)
     logger.info(f"➕ Added {rel_path} ({len(chunks)} chunks) in {time.time()-t0:.2f}s")
 
 def get_es_files():
-    query = {"size": 10000, "_source": ["hash"], "query": {"match_all": {}}}
-    response = ES.search(index=ES_INDEX_FILES, body=query)
+    query = {"size": 10000, "_source": ["path","hash","chunk_id"], "query": {"term": {"chunk_id": 0}}}
+    response = ES.search(index=ES_INDEX_CHUNKS, body=query)
     result = {}
     for hit in response.get("hits", {}).get("hits", []):
         src = hit.get("_source", {})
-        result[hit["_id"]] = src.get("hash")
+        result[src.get("path")] = src.get("hash")
     return result
 
 def process_files():
@@ -191,7 +155,6 @@ def process_files():
             if not current_hash:
                 if stored_hash:
                     delete_es_chunks(rel_path)
-                    delete_es_file(rel_path)
                 continue
             if stored_hash and stored_hash != current_hash:
                 delete_es_chunks(rel_path)
@@ -202,7 +165,6 @@ def process_files():
         if rel_path not in processed_paths:
             try:
                 delete_es_chunks(rel_path)
-                delete_es_file(rel_path)
             except Exception as e:
                 logger.error(f"Failed to delete file {rel_path}: {e}")
 

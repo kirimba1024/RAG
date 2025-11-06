@@ -31,7 +31,6 @@ CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-3-haiku-20240307")
 ES_HOST = os.getenv("ES_HOST", "localhost")
 ES_PORT = int(os.getenv("ES_PORT", "9200"))
 ES_INDEX_CHUNKS = os.getenv("ES_INDEX_CHUNKS", "chunks")
-ES_INDEX_FILES = os.getenv("ES_INDEX_FILES", "files")
 ES_URL = f"http://{ES_HOST}:{ES_PORT}"
 
 SANDBOX_CONTAINER_NAME = os.getenv("SANDBOX_CONTAINER_NAME", "rag-assistant-rag-sandbox-1")

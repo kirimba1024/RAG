@@ -50,6 +50,7 @@ class HybridESRetriever(BaseRetriever):
             },
             "query": {
                 "bool": {
+                    "filter": [{"range": {"chunk_id": {"gte": 1}}}],
                     "should": [
                         {
                             "multi_match": {
