@@ -22,6 +22,35 @@ CLAUDE = Anthropic(api_key=ANTHROPIC_API_KEY)
 
 EMBEDDING = HuggingFaceEmbedding(EMBED_MODEL, normalize=True)
 
+SPLIT_SYSTEM = load_prompt("prompts/split_blocks.txt")
+DESCRIBE_BLOCK_SYSTEM = load_prompt("prompts/describe_block.txt")
+DESCRIBE_FILE_SYSTEM = load_prompt("prompts/describe_file.txt")
+
+def warm_claude_cache():
+    CLAUDE.messages.create(
+        model=CLAUDE_MODEL,
+        max_tokens=128,
+        temperature=0,
+        system=SPLIT_SYSTEM,
+        messages=[{"role": "user", "content": "warm"}],
+        tools=[SPLIT_BLOCKS_TOOL]
+    )
+    CLAUDE.messages.create(
+        model=CLAUDE_MODEL,
+        max_tokens=128,
+        temperature=0,
+        system=DESCRIBE_BLOCK_SYSTEM,
+        messages=[{"role": "user", "content": "warm"}],
+        tools=[DESCRIBE_BLOCK_TOOL]
+    )
+    CLAUDE.messages.create(
+        model=CLAUDE_MODEL,
+        max_tokens=128,
+        temperature=0,
+        system=DESCRIBE_FILE_SYSTEM,
+        messages=[{"role": "user", "content": "warm"}],
+        tools=[DESCRIBE_FILE_TOOL]
+    )
 
 def delete_es_chunks(rel_path):
     query = {"term": {"path": rel_path}}
@@ -47,13 +76,11 @@ def index_es_file(rel_path, new_hash):
         raise RuntimeError(f"Пустой файл: {rel_path}")
     ext = full_path.suffix.lower()
     lang = LANG_BY_EXT.get(ext, "text")
-    prompt_template = load_prompt("prompts/split_blocks.txt")
-    system_prompt = prompt_template.format(lang=lang, rel_path=rel_path)
     response = CLAUDE.messages.create(
         model=CLAUDE_MODEL,
         max_tokens=4096,
         temperature=0,
-        system=system_prompt,
+        system=SPLIT_SYSTEM,
         messages=[{"role": "user", "content": file_text}],
         tools=[SPLIT_BLOCKS_TOOL]
     )
@@ -61,18 +88,16 @@ def index_es_file(rel_path, new_hash):
     logger.info(f"Разбито на {len(blocks)} блоков: {rel_path}")
     chunks = []
     lines_list = file_text.split('\n')
-    block_prompt = load_prompt("prompts/describe_block.txt")
     total = len(blocks)
     for i, block_def in enumerate(blocks, start=1):
         start = block_def["start_line"]
         end = block_def["end_line"]
         block_text = '\n'.join(lines_list[start-1:end])
-        block_system = block_prompt.format(lang=lang, rel_path=rel_path, block_idx=i)
         block_response = CLAUDE.messages.create(
             model=CLAUDE_MODEL,
             max_tokens=4096,
             temperature=0,
-            system=block_system,
+            system=DESCRIBE_BLOCK_SYSTEM,
             messages=[{"role": "user", "content": block_text}],
             tools=[DESCRIBE_BLOCK_TOOL]
         )
@@ -98,13 +123,11 @@ def index_es_file(rel_path, new_hash):
         })
     logger.info(f"Проанализировано {len(chunks)} чанков для {rel_path}")
     lines = file_text.count('\n') + 1
-    file_prompt = load_prompt("prompts/describe_file.txt")
-    file_system = file_prompt.format(rel_path=rel_path)
     file_response = CLAUDE.messages.create(
         model=CLAUDE_MODEL,
         max_tokens=4096,
         temperature=0,
-        system=file_system,
+        system=DESCRIBE_FILE_SYSTEM,
         messages=[{"role": "user", "content": file_text}],
         tools=[DESCRIBE_FILE_TOOL]
     )
