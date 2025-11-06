@@ -76,6 +76,10 @@ def index_es_file(rel_path, new_hash):
         raise RuntimeError(f"Пустой файл: {rel_path}")
     ext = full_path.suffix.lower()
     lang = LANG_BY_EXT.get(ext, "text")
+    file_size = full_path.stat().st_size
+    file_extension = full_path.suffix.lower()[1:] if full_path.suffix else ""
+    file_name = full_path.name
+    file_mime = mimetypes.guess_type(str(full_path))[0] or ""
     response = CLAUDE.messages.create(
         model=CLAUDE_MODEL,
         max_tokens=4096,
@@ -117,6 +121,12 @@ def index_es_file(rel_path, new_hash):
             "end_line": end,
             "kind": block_def.get("kind", ""),
             "lang": lang,
+            "size": file_size,
+            "lines": lines,
+            "extension": file_extension,
+            "filename": file_name,
+            "mime": file_mime,
+            "created_at": datetime.now(UTC).isoformat(),
             **meta,
             "llm_version": CLAUDE_MODEL,
             "updated_at": datetime.now(UTC).isoformat(),
@@ -132,19 +142,23 @@ def index_es_file(rel_path, new_hash):
         tools=[DESCRIBE_FILE_TOOL]
     )
     file_level = file_response.content[0].input
+    file_embedding = EMBEDDING.get_text_embedding(file_text)
     helpers.bulk(ES.options(request_timeout=120), chunks, chunk_size=2000, raise_on_error=True)
     doc = {
         "path": rel_path,
         "hash": new_hash,
+        "text": file_text,
+        "embedding": file_embedding,
+        "llm_version": CLAUDE_MODEL,
         "language": lang,
         "lines": lines,
         "chunk_count": len(chunks),
         "updated_at": datetime.now(UTC).isoformat(),
         "created_at": datetime.now(UTC).isoformat(),
-        "size": (full_path.stat().st_size if full_path.exists() else 0),
-        "extension": (full_path.suffix.lower()[1:] if full_path.suffix else ""),
-        "filename": full_path.name,
-        "mime": mimetypes.guess_type(str(full_path))[0] or "",
+        "size": file_size,
+        "extension": file_extension,
+        "filename": file_name,
+        "mime": file_mime,
         **file_level,
     }
     ES.index(index=ES_INDEX_FILES, id=rel_path, document=doc, refresh=True)

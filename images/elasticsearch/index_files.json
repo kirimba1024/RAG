@@ -34,6 +34,15 @@
       "tags":        { "type": "keyword", "normalizer": "lower_ascii" },
       "key_points":  { "type": "keyword", "normalizer": "lower_ascii" },
       "hash":        { "type": "keyword", "normalizer": "lower_ascii" },
+      "text":        { "type": "text", "analyzer": "code_friendly" },
+      "embedding": {
+        "type": "dense_vector",
+        "dims": 1024,
+        "index": true,
+        "similarity": "cosine",
+        "index_options": { "type": "hnsw", "m": 32, "ef_construction": 256 }
+      },
+      "llm_version": { "type": "keyword", "normalizer": "lower_ascii" },
       "size":        { "type": "long" },
       "lines":       { "type": "integer" },
       "chunk_count": { "type": "integer" },
