@@ -2,6 +2,7 @@ import time
 from pathlib import Path
 from datetime import datetime, UTC
 from typing import List, Dict, Any
+import mimetypes
 
 from elasticsearch import Elasticsearch, helpers
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
@@ -22,99 +23,6 @@ CLAUDE = Anthropic(api_key=ANTHROPIC_API_KEY)
 EMBEDDING = HuggingFaceEmbedding(EMBED_MODEL, normalize=True)
 
 
-def split_file_into_blocks(text: str, lang: str, rel_path: str) -> tuple[Dict[str, Any], List[Dict[str, Any]]]:
-    prompt_template = load_prompt("prompts/split_blocks.txt")
-    system_prompt = prompt_template.format(lang=lang, rel_path=rel_path)
-    user_content = f"Разбей файл:\n\n```{lang}\n{text}\n```"
-    tools = [SPLIT_BLOCKS_TOOL]
-    response = CLAUDE.messages.create(
-        model=CLAUDE_MODEL,
-        max_tokens=4096,
-        temperature=0,
-        system=system_prompt,
-        messages=[{"role": "user", "content": user_content}],
-        tools=tools
-    )
-    tool_use = None
-    for block in response.content:
-        if block.type == "tool_use" and block.name == "split_blocks":
-            tool_use = block
-            break
-    if not tool_use:
-        logger.error(f"Не получен tool_use для split_blocks: {rel_path}")
-        return {}, []
-    file_meta = {k: v for k, v in tool_use.input.items() if k != "blocks"}
-    blocks = tool_use.input["blocks"]
-    logger.info(f"Разбито на {len(blocks)} блоков: {rel_path}")
-    return file_meta, blocks
-
-def describe_block(block_text: str, lang: str, rel_path: str, block_idx: int) -> Dict[str, Any]:
-    prompt_template = load_prompt("prompts/describe_block.txt")
-    system_prompt = prompt_template.format(lang=lang, rel_path=rel_path, block_idx=block_idx)
-    user_content = f"Блок:\n\n```{lang}\n{block_text}\n```"
-    tools = [DESCRIBE_BLOCK_TOOL]
-    response = CLAUDE.messages.create(
-        model=CLAUDE_MODEL,
-        max_tokens=4096,
-        temperature=0,
-        system=system_prompt,
-        messages=[{"role": "user", "content": user_content}],
-        tools=tools
-    )
-    tool_use = None
-    for block in response.content:
-        if block.type == "tool_use" and block.name == "describe_block":
-            tool_use = block
-            break
-    if not tool_use:
-        logger.error(f"Не получен tool_use для describe_block: {rel_path} блок #{block_idx}")
-        return {}
-    return tool_use.input
-
-def describe_file(file_text: str, lang: str, rel_path: str) -> Dict[str, Any]:
-    system_prompt = load_prompt("prompts/describe_file.txt").format(rel_path=rel_path)
-    user_content = f"Файл:\n\n```{lang}\n{file_text}\n```"
-    response = CLAUDE.messages.create(
-        model=CLAUDE_MODEL,
-        max_tokens=4096,
-        temperature=0,
-        system=system_prompt,
-        messages=[{"role": "user", "content": user_content}],
-        tools=[DESCRIBE_FILE_TOOL]
-    )
-    for block in response.content:
-        if block.type == "tool_use" and block.name == "describe_file":
-            return block.input
-    return {}
-
-def analyze_file(rel_path: str) -> tuple[Dict[str, Any], List[Dict[str, Any]], str, int]:
-    full_path = REPOS_SAFE_ROOT / rel_path
-    if not full_path.exists():
-        return {}, [], "", 0
-    text = full_path.read_text(encoding='utf-8', errors='ignore')
-    ext = full_path.suffix.lower()
-    lang = LANG_BY_EXT.get(ext, "text")
-    file_meta, blocks = split_file_into_blocks(text, lang, rel_path)
-    chunks = []
-    lines = text.count('\n') + 1 if text else 0
-    for i, block_def in enumerate(blocks):
-        start = block_def["start_line"]
-        end = block_def["end_line"]
-        lines = text.split('\n')
-        block_text = '\n'.join(lines[start-1:end])
-        meta = describe_block(block_text, lang, rel_path, i)
-        chunks.append({
-            "start_line": start,
-            "end_line": end,
-            "kind": block_def.get("kind", "other"),
-            "lang": lang,
-            "text": block_text,
-            **meta
-        })
-    logger.info(f"Проанализировано {len(chunks)} чанков для {rel_path}")
-    return file_meta, chunks, lang, (text.count('\n') + 1 if text else 0)
-
-
 def delete_es_chunks(rel_path):
     query = {"term": {"path": rel_path}}
     ES.options(request_timeout=120).delete_by_query(
@@ -128,64 +36,95 @@ def delete_es_chunks(rel_path):
 def delete_es_file(rel_path: str):
     ES.options(request_timeout=60).delete(index=ES_INDEX_FILES, id=rel_path, ignore=[404])
 
-def chunks_to_actions(chunks: list[dict], rel_path: str, file_hash: str) -> list[dict]:
-    total = len(chunks)
-    actions = []
-    for i, chunk in enumerate(chunks, start=1):
-        chunk_id = f"{rel_path}#{i}/{total}"
-        embedding = EMBEDDING.get_text_embedding(chunk["text"])
-        actions.append({
+
+def index_es_file(rel_path, new_hash):
+    t0 = time.time()
+    full_path = REPOS_SAFE_ROOT / rel_path
+    if not full_path.exists():
+        raise FileNotFoundError(f"Файл не найден: {rel_path}")
+    file_text = full_path.read_text(encoding='utf-8', errors='ignore')
+    if not file_text:
+        raise RuntimeError(f"Пустой файл: {rel_path}")
+    ext = full_path.suffix.lower()
+    lang = LANG_BY_EXT.get(ext, "text")
+    prompt_template = load_prompt("prompts/split_blocks.txt")
+    system_prompt = prompt_template.format(lang=lang, rel_path=rel_path)
+    response = CLAUDE.messages.create(
+        model=CLAUDE_MODEL,
+        max_tokens=4096,
+        temperature=0,
+        system=system_prompt,
+        messages=[{"role": "user", "content": file_text}],
+        tools=[SPLIT_BLOCKS_TOOL]
+    )
+    blocks = response.content[0].input["blocks"]
+    logger.info(f"Разбито на {len(blocks)} блоков: {rel_path}")
+    chunks = []
+    lines_list = file_text.split('\n')
+    block_prompt = load_prompt("prompts/describe_block.txt")
+    total = len(blocks)
+    for i, block_def in enumerate(blocks, start=1):
+        start = block_def["start_line"]
+        end = block_def["end_line"]
+        block_text = '\n'.join(lines_list[start-1:end])
+        block_system = block_prompt.format(lang=lang, rel_path=rel_path, block_idx=i)
+        block_response = CLAUDE.messages.create(
+            model=CLAUDE_MODEL,
+            max_tokens=4096,
+            temperature=0,
+            system=block_system,
+            messages=[{"role": "user", "content": block_text}],
+            tools=[DESCRIBE_BLOCK_TOOL]
+        )
+        meta = block_response.content[0].input
+        embedding = EMBEDDING.get_text_embedding(block_text)
+        chunks.append({
             "_op_type": "index",
             "_index": ES_INDEX_CHUNKS,
-            "_id": chunk_id,
+            "_id": f"{rel_path}#{i}/{total}",
             "path": rel_path,
-            "hash": file_hash,
-            "text": chunk["text"],
+            "hash": new_hash,
+            "text": block_text,
             "embedding": embedding,
             "chunk_id": i,
             "chunks": total,
-            "start_line": chunk["start_line"],
-            "end_line": chunk["end_line"],
-            "kind": chunk.get("kind", ""),
-            "lang": chunk.get("lang", ""),
-            "title": chunk.get("chunk_title", ""),
-            "summary": chunk.get("chunk_summary", ""),
-            "tags": chunk.get("tags", []),
-            "entities": chunk.get("entities", []),
-            "public_symbols": chunk.get("public_symbols", []),
-            "io": chunk.get("io", []),
-            "security_flags": chunk.get("security_flags", []),
-            "likely_queries": chunk.get("likely_queries", []),
+            "start_line": start,
+            "end_line": end,
+            "kind": block_def.get("kind", ""),
+            "lang": lang,
+            **meta,
             "llm_version": CLAUDE_MODEL,
             "updated_at": datetime.now(UTC).isoformat(),
         })
-    return actions
-
-def upsert_es_file(rel_path: str, new_hash: str, file_meta: Dict[str, Any], lang: str, lines: int, chunk_count: int):
-    now = datetime.now(UTC).isoformat()
+    logger.info(f"Проанализировано {len(chunks)} чанков для {rel_path}")
+    lines = file_text.count('\n') + 1
+    file_prompt = load_prompt("prompts/describe_file.txt")
+    file_system = file_prompt.format(rel_path=rel_path)
+    file_response = CLAUDE.messages.create(
+        model=CLAUDE_MODEL,
+        max_tokens=4096,
+        temperature=0,
+        system=file_system,
+        messages=[{"role": "user", "content": file_text}],
+        tools=[DESCRIBE_FILE_TOOL]
+    )
+    file_level = file_response.content[0].input
+    helpers.bulk(ES.options(request_timeout=120), chunks, chunk_size=2000, raise_on_error=True)
     doc = {
         "path": rel_path,
         "hash": new_hash,
         "language": lang,
         "lines": lines,
-        "chunk_count": chunk_count,
-        "updated_at": now,
+        "chunk_count": len(chunks),
+        "updated_at": datetime.now(UTC).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
+        "size": (full_path.stat().st_size if full_path.exists() else 0),
+        "extension": (full_path.suffix.lower()[1:] if full_path.suffix else ""),
+        "filename": full_path.name,
+        "mime": mimetypes.guess_type(str(full_path))[0] or "",
+        **file_level,
     }
-    for k in ["name","title","description","summary","detailed","purpose","file_type","tags","key_points"]:
-        if k in file_meta:
-            doc[k] = file_meta[k]
     ES.index(index=ES_INDEX_FILES, id=rel_path, document=doc, refresh=True)
-
-def index_es_file(rel_path, new_hash):
-    t0 = time.time()
-    file_meta, chunks, lang, lines = analyze_file(rel_path)
-    full_path = REPOS_SAFE_ROOT / rel_path
-    file_text = full_path.read_text(encoding='utf-8', errors='ignore') if full_path.exists() else ""
-    file_level = describe_file(file_text, lang, rel_path) if file_text else {}
-    actions = chunks_to_actions(chunks, rel_path, new_hash)
-    helpers.bulk(ES.options(request_timeout=120), actions, chunk_size=2000, raise_on_error=True)
-    merged = {**file_meta, **file_level}
-    upsert_es_file(rel_path, new_hash, merged, lang, lines, len(chunks))
     logger.info(f"➕ Added {rel_path} ({len(chunks)} chunks) in {time.time()-t0:.2f}s")
 
 def get_es_files():
