@@ -8,7 +8,7 @@ from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from anthropic import Anthropic
 
 from utils import (
-    ES_URL, ES_INDEX, ES_MANIFEST_INDEX,
+    ES_URL, ES_INDEX_CHUNKS, ES_INDEX_FILES,
     EMBED_MODEL, REPOS_SAFE_ROOT, git_blob_oid, setup_logging, is_ignored, to_posix,
     CLAUDE_MODEL, ANTHROPIC_API_KEY, LANG_BY_EXT, load_prompt
 )
@@ -23,7 +23,7 @@ EMBEDDING = HuggingFaceEmbedding(EMBED_MODEL, normalize=True)
 
 LLM_VERSION = "v1"
 
-def split_file_into_blocks(text: str, lang: str, rel_path: str) -> List[Dict[str, Any]]:
+def split_file_into_blocks(text: str, lang: str, rel_path: str) -> tuple[Dict[str, Any], List[Dict[str, Any]]]:
     prompt_template = load_prompt("prompts/split_blocks.txt")
     system_prompt = prompt_template.format(lang=lang, rel_path=rel_path)
     user_content = f"Разбей файл:\n\n```{lang}\n{text}\n```"
@@ -43,10 +43,11 @@ def split_file_into_blocks(text: str, lang: str, rel_path: str) -> List[Dict[str
             break
     if not tool_use:
         logger.error(f"Не получен tool_use для split_blocks: {rel_path}")
-        return []
+        return {}, []
+    file_meta = {k: v for k, v in tool_use.input.items() if k != "blocks"}
     blocks = tool_use.input["blocks"]
     logger.info(f"Разбито на {len(blocks)} блоков: {rel_path}")
-    return blocks
+    return file_meta, blocks
 
 def describe_block(block_text: str, lang: str, rel_path: str, block_idx: int) -> Dict[str, Any]:
     prompt_template = load_prompt("prompts/describe_block.txt")
@@ -71,15 +72,16 @@ def describe_block(block_text: str, lang: str, rel_path: str, block_idx: int) ->
         return {}
     return tool_use.input
 
-def analyze_file(rel_path: str) -> List[Dict[str, Any]]:
+def analyze_file(rel_path: str) -> tuple[Dict[str, Any], List[Dict[str, Any]], str, int]:
     full_path = REPOS_SAFE_ROOT / rel_path
     if not full_path.exists():
-        return []
+        return {}, [], "", 0
     text = full_path.read_text(encoding='utf-8', errors='ignore')
     ext = full_path.suffix.lower()
     lang = LANG_BY_EXT.get(ext, "text")
-    blocks = split_file_into_blocks(text, lang, rel_path)
+    file_meta, blocks = split_file_into_blocks(text, lang, rel_path)
     chunks = []
+    lines = text.count('\n') + 1 if text else 0
     for i, block_def in enumerate(blocks):
         start = block_def["start_line"]
         end = block_def["end_line"]
@@ -95,20 +97,23 @@ def analyze_file(rel_path: str) -> List[Dict[str, Any]]:
             **meta
         })
     logger.info(f"Проанализировано {len(chunks)} чанков для {rel_path}")
-    return chunks
+    return file_meta, chunks, lang, (text.count('\n') + 1 if text else 0)
 
 def get_file_chunks(rel_path):
     return analyze_file(rel_path)
 
-def delete_chunks(rel_path):
+def delete_es_chunks(rel_path):
     query = {"term": {"path": rel_path}}
     ES.options(request_timeout=120).delete_by_query(
-        index=ES_INDEX,
+        index=ES_INDEX_CHUNKS,
         body={"query": query},
         conflicts="proceed",
         refresh=True,
         allow_no_indices=True
     )
+
+def delete_es_file(rel_path: str):
+    ES.options(request_timeout=60).delete(index=ES_INDEX_FILES, id=rel_path, ignore=[404])
 
 def chunks_to_actions(chunks: list[dict], rel_path: str, file_hash: str) -> list[dict]:
     total = len(chunks)
@@ -118,7 +123,7 @@ def chunks_to_actions(chunks: list[dict], rel_path: str, file_hash: str) -> list
         embedding = EMBEDDING.get_text_embedding(chunk["text"])
         actions.append({
             "_op_type": "index",
-            "_index": ES_INDEX,
+            "_index": ES_INDEX_CHUNKS,
             "_id": chunk_id,
             "path": rel_path,
             "hash": file_hash,
@@ -143,45 +148,39 @@ def chunks_to_actions(chunks: list[dict], rel_path: str, file_hash: str) -> list
         })
     return actions
 
-def add_file(rel_path, new_hash):
+def upsert_es_file(rel_path: str, new_hash: str, file_meta: Dict[str, Any], lang: str, lines: int, chunk_count: int):
+    now = datetime.now(UTC).isoformat()
+    doc = {
+        "path": rel_path,
+        "hash": new_hash,
+        "language": lang,
+        "lines": lines,
+        "chunk_count": chunk_count,
+        "updated": now,
+    }
+    for k in ["name","title","description","summary","detailed","purpose","file_type","tags","key_points"]:
+        if k in file_meta:
+            doc[k] = file_meta[k]
+    ES.index(index=ES_INDEX_FILES, id=rel_path, document=doc, refresh=True)
+
+def index_es_file(rel_path, new_hash):
     t0 = time.time()
-    chunks = get_file_chunks(rel_path)
+    file_meta, chunks, lang, lines = get_file_chunks(rel_path)
     actions = chunks_to_actions(chunks, rel_path, new_hash)
     helpers.bulk(ES.options(request_timeout=120), actions, chunk_size=2000, raise_on_error=True)
+    upsert_es_file(rel_path, new_hash, file_meta, lang, lines, len(chunks))
     logger.info(f"➕ Added {rel_path} ({len(chunks)} chunks) in {time.time()-t0:.2f}s")
 
-def get_indexed_files():
-    query = {
-        "size": 0,
-        "aggs": {
-            "paths": {
-                "terms": {
-                    "field": "path",
-                    "size": 10000
-                },
-                "aggs": {
-                    "hash": {
-                        "top_hits": {
-                            "size": 1,
-                            "_source": ["hash"]
-                        }
-                    }
-                }
-            }
-        }
-    }
-    response = ES.search(index=ES_INDEX, body=query)
+def get_es_files():
+    query = {"size": 10000, "_source": ["hash"], "query": {"match_all": {}}}
+    response = ES.search(index=ES_INDEX_FILES, body=query)
     result = {}
-    for bucket in response["aggregations"]["paths"]["buckets"]:
-        path = bucket["key"]
-        hits = bucket["hash"]["hits"]["hits"]
-        if hits and "hash" in hits[0]["_source"]:
-            hash_value = hits[0]["_source"]["hash"]
-            result[path] = hash_value
+    for hit in response.get("hits", {}).get("hits", []):
+        result[hit["_id"]] = hit["_source"].get("hash")
     return result
 
 def process_files():
-    indexed_hash_by_file = get_indexed_files()
+    indexed_hash_by_file = get_es_files()
     processed_paths = set()
     for full in (f for f in REPOS_SAFE_ROOT.rglob('**/*') if f.is_file()):
         rel_path = to_posix(full.relative_to(REPOS_SAFE_ROOT))
@@ -197,17 +196,19 @@ def process_files():
                 continue
             if not current_hash:
                 if stored_hash:
-                    delete_chunks(rel_path)
+                    delete_es_chunks(rel_path)
+                    delete_es_file(rel_path)
                 continue
             if stored_hash and stored_hash != current_hash:
-                delete_chunks(rel_path)
-            add_file(rel_path, current_hash)
+                delete_es_chunks(rel_path)
+            index_es_file(rel_path, current_hash)
         except Exception as e:
             logger.error(f"Failed to process file {rel_path}: {e}")
     for rel_path in indexed_hash_by_file.keys():
         if rel_path not in processed_paths:
             try:
-                delete_chunks(rel_path)
+                delete_es_chunks(rel_path)
+                delete_es_file(rel_path)
             except Exception as e:
                 logger.error(f"Failed to delete file {rel_path}: {e}")
 

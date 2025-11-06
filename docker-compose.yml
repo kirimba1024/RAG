@@ -6,7 +6,8 @@ services:
       - discovery.type=single-node
       - xpack.security.enabled=false
       - ES_JAVA_OPTS=-Xms1g -Xmx1g
-      - ES_INDEX=${ES_INDEX:-rag}
+      - ES_INDEX_CHUNKS=${ES_INDEX_CHUNKS:-chunks}
+      - ES_INDEX_FILES=${ES_INDEX_FILES:-files}
     ports:
       - "${ES_PORT:-9200}:9200"
 

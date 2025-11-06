@@ -46,14 +46,12 @@
   "mappings": {
     "dynamic": "strict",
     "properties": {
-
       "path":   { "type": "keyword", "normalizer": "lower_ascii" },
       "hash":   { "type": "keyword", "normalizer": "lower_ascii" },
       "chunk_id": { "type": "integer" },
       "chunk_count": { "type": "integer" },
       "start_line": { "type": "integer" },
       "end_line": { "type": "integer" },
-
       "text": {
         "type": "text",
         "analyzer": "code_friendly",
@@ -62,7 +60,6 @@
           "en": { "type": "text", "analyzer": "en_text" }
         }
       },
-
       "embedding": {
         "type": "dense_vector",
         "dims": 1024,
@@ -74,7 +71,8 @@
           "ef_construction": 256
         }
       }
-
     }
   }
 }
+
+

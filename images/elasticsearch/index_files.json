@@ -1,0 +1,46 @@
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 1,
+    "refresh_interval": "30s",
+    "analysis": {
+      "normalizer": {
+        "lower_ascii": {
+          "type": "custom",
+          "filter": ["lowercase", "asciifolding"]
+        }
+      },
+      "analyzer": {
+        "code_friendly": {
+          "type": "custom",
+          "tokenizer": "standard",
+          "filter": ["lowercase"]
+        }
+      }
+    }
+  },
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "path":        { "type": "keyword", "normalizer": "lower_ascii" },
+      "name":        { "type": "keyword", "normalizer": "lower_ascii" },
+      "title":       { "type": "keyword", "normalizer": "lower_ascii" },
+      "description": { "type": "keyword", "normalizer": "lower_ascii" },
+      "summary":     { "type": "text",    "analyzer": "code_friendly" },
+      "detailed":    { "type": "text",    "analyzer": "code_friendly" },
+      "purpose":     { "type": "text",    "analyzer": "code_friendly" },
+      "language":    { "type": "keyword", "normalizer": "lower_ascii" },
+      "file_type":   { "type": "keyword", "normalizer": "lower_ascii" },
+      "tags":        { "type": "keyword", "normalizer": "lower_ascii" },
+      "key_points":  { "type": "keyword", "normalizer": "lower_ascii" },
+      "hash":        { "type": "keyword", "normalizer": "lower_ascii" },
+      "size":        { "type": "long" },
+      "lines":       { "type": "integer" },
+      "chunk_count": { "type": "integer" },
+      "created":     { "type": "date" },
+      "updated":     { "type": "date" }
+    }
+  }
+}
+
+

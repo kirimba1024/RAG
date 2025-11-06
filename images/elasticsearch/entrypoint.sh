@@ -7,11 +7,17 @@ create_indices() {
     sleep 1
   done
   
-  curl -fsS -X PUT "http://localhost:9200/${ES_INDEX:-rag}" \
+  # chunks index
+  curl -fsS -X PUT "http://localhost:9200/${ES_INDEX_CHUNKS:-chunks}" \
     -H 'Content-Type: application/json' \
-    -d @/init/index.json >/dev/null 2>&1 || true
-  
-  echo "[elasticsearch] rag index applied"
+    -d @/init/index_chunks.json >/dev/null 2>&1 || true
+
+  # files index
+  curl -fsS -X PUT "http://localhost:9200/${ES_INDEX_FILES:-files}" \
+    -H 'Content-Type: application/json' \
+    -d @/init/index_files.json >/dev/null 2>&1 || true
+
+  echo "[elasticsearch] indices applied (chunks, files)"
 }
 
 create_indices &
