@@ -109,3 +109,16 @@
 - Все упоминания Sourcegraph из README.MD
 - Переменные SOURCEGRAPH_* из utils.py
 - Переменные SOURCEGRAPH_* из .env примеров
+ 
+=== Переход на один индекс (chunks) и унификация метаданных ===
+- Удалён индекс files; весь файл хранится как функциональный чанк: chunk_id=0, kind=whole
+- build.py: сплит → prepend whole-блок → описываем каждый блок одним тулом → индексируем actions напрямую (bulk)
+- Универсальный тул describe_tool: один schema для файла и чанков; старые DESCRIBE_FILE/Block удалены
+- Промпты: оставлены split_blocks.txt и describe.txt; describe_block.txt/describe_file.txt удалены
+- Поля синхронизированы: и в chunk(включая id=0) и в файле (теперь тоже в чанке) есть hash, text, embedding, llm_version, size, lines, extension, filename, mime, created_at, updated_at
+- edges упрощён: список строк формата typeA@nameA→typeB@nameB (для графа зависимостей)
+- tools.py: добавлены/уточнены поля likely_queries, io, symbols, security_flags; descriptions выровнены
+- retriever.py: исключает функциональные чанки фильтром chunk_id>=1
+- images/elasticsearch: удалён index_files.json; entrypoint.sh/Dockerfile создают/копируют только index_chunks.json
+- utils.py: удалён ES_INDEX_FILES; добавлен EMBED_DIMS (по умолчанию 1024)
+- docker-compose.yml: переменная ES_INDEX_FILES удалена
