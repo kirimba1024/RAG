@@ -119,7 +119,10 @@
       "imports":     { "type": "keyword", "normalizer": "lower_ascii" },
       "functions":   { "type": "keyword", "normalizer": "lower_ascii" },
       "classes":     { "type": "keyword", "normalizer": "lower_ascii" },
-      "variables":   { "type": "keyword", "normalizer": "lower_ascii" }
+      "variables":   { "type": "keyword", "normalizer": "lower_ascii" },
+
+      
+      "links":       { "type": "object", "enabled": false }
     }
   }
 }
