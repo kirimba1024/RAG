@@ -13,7 +13,7 @@ from utils import (
     EMBED_MODEL, REPOS_SAFE_ROOT, git_blob_oid, setup_logging, is_ignored, to_posix,
     CLAUDE_MODEL, ANTHROPIC_API_KEY, LANG_BY_EXT, load_prompt
 )
-from tools import SPLIT_BLOCKS_TOOL, DESCRIBE_TOOLS
+from tools import SPLIT_BLOCKS_TOOL, DESCRIBE_CORE_TOOL, DESCRIBE_SIGNALS_A_TOOL, DESCRIBE_SIGNALS_B_TOOL
 
 logger = setup_logging(Path(__file__).stem)
 
@@ -23,7 +23,12 @@ CLAUDE = Anthropic(api_key=ANTHROPIC_API_KEY)
 EMBEDDING = HuggingFaceEmbedding(EMBED_MODEL, normalize=True)
 
 SPLIT_SYSTEM = load_prompt("prompts/split_blocks.txt")
-DESCRIBE_SYSTEM = load_prompt("prompts/describe.txt")
+
+DESCRIBE_TOOLS = {
+    DESCRIBE_CORE_TOOL["name"]: [load_prompt("prompts/describe_core.txt"), DESCRIBE_CORE_TOOL],
+    DESCRIBE_SIGNALS_A_TOOL["name"]: [load_prompt("prompts/signals_A.txt"), DESCRIBE_SIGNALS_A_TOOL],
+    DESCRIBE_SIGNALS_B_TOOL["name"]: [load_prompt("prompts/signals_B.txt"), DESCRIBE_SIGNALS_B_TOOL],
+}
 
 def delete_es_chunks(rel_path):
     query = {"term": {"path": rel_path}}
@@ -71,17 +76,17 @@ def index_es_file(rel_path, new_hash):
         end = block_def["end_line"]
         block_text = '\n'.join(lines_list[start-1:end])
         meta = {}
-        for tool_def in DESCRIBE_TOOLS:
+        for system_prompt, tool in DESCRIBE_TOOLS.values():
             step_response = CLAUDE.messages.create(
                 model=CLAUDE_MODEL,
                 max_tokens=4096,
                 temperature=0,
-                system=[{"type": "text", "text": DESCRIBE_SYSTEM, "cache_control": {"type": "ephemeral"}}],
+                system=[{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}],
                 messages=[{"role": "user", "content": [
                     {"type": "text", "text": block_text, "cache_control": {"type": "ephemeral"}}
                 ]}],
-                tools=[tool_def],
-                tool_choice={"type": "tool", "name": tool_def["name"]},
+                tools=[tool],
+                tool_choice={"type": "tool", "name": tool["name"]},
                 extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"}
             )
             meta.update(step_response.content[0].input)

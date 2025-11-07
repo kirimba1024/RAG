@@ -83,178 +83,85 @@ SPLIT_BLOCKS_TOOL = {
     }
 }
 
-DESCRIBE_IDENTITY_TOOL = {
-    "name": "describe_identity",
-    "description": "Объект с полями идентификации.",
+DESCRIBE_CORE_TOOL = {
+    "name": "describe_core",
     "input_schema": {
         "type": "object",
         "additionalProperties": False,
-        "required": ["name","title","description","summary","detailed","language","purpose","file_type","tags","key_points"],
+        "required": ["name", "title", "description", "summary", "detailed", "language", "purpose", "file_type", "notes", "conclusions", "open_questions", "highlights", "has_documentation", "layer", "complexity", "confidence", "improvements", "bugs", "vulnerabilities"],
         "properties": {
-            "name": {"type": "string", "minLength": 1, "maxLength": 32, "pattern": "^\\S+$"},
-            "title": {"type": "string", "minLength": 1, "maxLength": 128},
-            "description": {"type": "string", "minLength": 1, "maxLength": 256},
-            "summary": {"type": "string", "minLength": 1, "maxLength": 1024},
-            "detailed": {"type": "string", "minLength": 1, "maxLength": 2048},
-            "language": {"type": "string", "minLength": 1, "maxLength": 32},
-            "purpose": {"type": "string", "minLength": 1, "maxLength": 240},
-            "file_type": {"type": "string", "enum": ["code","markup","config","schema","doc","data","binary","mixed"]},
-            "tags": {"type": "array", "minItems": 1, "uniqueItems": True, "items": {"type": "string", "minLength": 1, "maxLength": 40}, "maxItems": 10},
-            "key_points": {"type": "array", "minItems": 1, "uniqueItems": True, "items": {"type": "string", "minLength": 1, "maxLength": 80}, "maxItems": 3}
+            "name":                {"type": "string", "maxLength": 32, "pattern": "^\\S+$"},
+            "title":               {"type": "string", "maxLength": 128},
+            "description":         {"type": "string", "maxLength": 256},
+            "summary":             {"type": "string", "maxLength": 1024},
+            "detailed":            {"type": "string", "maxLength": 2048},
+            "language":            {"type": "string", "maxLength": 32},
+            "purpose":             {"type": "string", "maxLength": 240},
+            "file_type":           {"type": "string", "maxLength": 32},
+            "notes":               {"type": "string", "maxLength": 512},
+            "conclusions":         {"type": "string", "maxLength": 512},
+            "open_questions":      {"type": "string", "maxLength": 512},
+            "highlights":          {"type": "string", "maxLength": 512},
+            "has_documentation":   {"type": "boolean"},
+            "layer":               {"type": "string", "maxLength": 32},
+            "complexity":          {"type": "number", "minimum": 0, "maximum": 1},
+            "confidence":          {"type": "number", "minimum": 0, "maximum": 1},
+            "improvements":        {"type": "string", "maxLength": 512},
+            "bugs":                {"type": "string", "maxLength": 512},
+            "vulnerabilities":     {"type": "string", "maxLength": 512}
         }
     }
 }
 
-DESCRIBE_API_TOOL = {
-    "name": "describe_api",
-    "description": "API/интерфейсы и I/O.",
+DESCRIBE_SIGNALS_A_TOOL = {
+    "name": "describe_signals_a",
     "input_schema": {
         "type": "object",
         "additionalProperties": False,
-        "required": ["http_endpoints","apis","io"],
+        "required": ["symbols", "paths", "keys", "api_endpoints", "db_entities", "dependencies", "events_queues", "idents", "headers_auth_scopes", "errors_codes", "imports", "functions", "classes", "variables"],
         "properties": {
-            "http_endpoints": {"type": "array", "items": {"type": "string"}},
-            "apis": {"type": "array", "items": {"type": "string"}},
-            "io": {"type": "array", "items": {"type": "string"}}
+            "symbols":             {"type": "array", "items": {"type": "string"}},
+            "paths":               {"type": "array", "items": {"type": "string"}},
+            "keys":                {"type": "array", "items": {"type": "string"}},
+            "api_endpoints":       {"type": "array", "items": {"type": "string"}},
+            "db_entities":         {"type": "array", "items": {"type": "string"}},
+            "dependencies":        {"type": "array", "items": {"type": "string"}},
+            "events_queues":       {"type": "array", "items": {"type": "string"}},
+            "idents":              {"type": "array", "items": {"type": "string"}},
+            "headers_auth_scopes": {"type": "array", "items": {"type": "string"}},
+            "errors_codes":        {"type": "array", "items": {"type": "string"}},
+            "imports":             {"type": "array", "items": {"type": "string"}},
+            "functions":           {"type": "array", "items": {"type": "string"}},
+            "classes":             {"type": "array", "items": {"type": "string"}},
+            "variables":           {"type": "array", "items": {"type": "string"}}
         }
     }
 }
 
-DESCRIBE_ENTITIES_TOOL = {
-    "name": "describe_entities",
-    "description": "Сущности и колонки.",
+DESCRIBE_SIGNALS_B_TOOL = {
+    "name": "describe_signals_b",
     "input_schema": {
         "type": "object",
         "additionalProperties": False,
-        "required": ["entities","domain_objects","table_columns"],
+        "required": ["feature_flags", "secrets", "permissions", "roles", "apis", "endpoints", "config_keys", "dtos", "entities", "domain_objects", "bm25_boost_terms", "io", "tags", "key_points", "likely_queries", "security_flags", "todos"],
         "properties": {
-            "entities": {"type": "array", "items": {"type": "string"}},
-            "domain_objects": {"type": "array", "items": {"type": "string"}},
-            "table_columns": {"type": "array", "items": {"type": "string"}}
+            "feature_flags":       {"type": "array", "items": {"type": "string"}},
+            "secrets":             {"type": "array", "items": {"type": "string"}},
+            "permissions":         {"type": "array", "items": {"type": "string"}},
+            "roles":               {"type": "array", "items": {"type": "string"}},
+            "apis":                {"type": "array", "items": {"type": "string"}},
+            "endpoints":           {"type": "array", "items": {"type": "string"}},
+            "config_keys":         {"type": "array", "items": {"type": "string"}},
+            "dtos":                {"type": "array", "items": {"type": "string"}},
+            "entities":            {"type": "array", "items": {"type": "string"}},
+            "domain_objects":      {"type": "array", "items": {"type": "string"}},
+            "bm25_boost_terms":    {"type": "array", "items": {"type": "string"}},
+            "io":                  {"type": "array", "items": {"type": "string"}},
+            "tags":                {"type": "array", "items": {"type": "string"}},
+            "key_points":          {"type": "array", "items": {"type": "string"}},
+            "likely_queries":      {"type": "array", "items": {"type": "string"}},
+            "security_flags":      {"type": "array", "items": {"type": "string"}},
+            "todos":               {"type": "array", "items": {"type": "string"}}
         }
     }
 }
-
-DESCRIBE_DEPS_TOOL = {
-    "name": "describe_deps",
-    "description": "Импорты и зависимости.",
-    "input_schema": {
-        "type": "object",
-        "additionalProperties": False,
-        "required": ["imports","dependencies"],
-        "properties": {
-            "imports": {"type": "array", "items": {"type": "string"}},
-            "dependencies": {"type": "array", "items": {"type": "string"}}
-        }
-    }
-}
-
-DESCRIBE_SECURITY_TOOL = {
-    "name": "describe_security",
-    "description": "Права и безопасность.",
-    "input_schema": {
-        "type": "object",
-        "additionalProperties": False,
-        "required": ["permissions_roles","security_flags","vulnerabilities","secrets_found"],
-        "properties": {
-            "permissions_roles": {"type": "array", "items": {"type": "string"}},
-            "security_flags": {"type": "array", "items": {"type": "string"}},
-            "vulnerabilities": {"type": "string"},
-            "secrets_found": {"type": "array", "items": {"type": "string"}}
-        }
-    }
-}
-
-DESCRIBE_FLAGS_TOOL = {
-    "name": "describe_flags",
-    "description": "Конфиги и фичи.",
-    "input_schema": {
-        "type": "object",
-        "additionalProperties": False,
-        "required": ["config_keys","feature_flags","todos"],
-        "properties": {
-            "config_keys": {"type": "array", "items": {"type": "string"}},
-            "feature_flags": {"type": "array", "items": {"type": "string"}},
-            "todos": {"type": "array", "items": {"type": "string"}}
-        }
-    }
-}
-
-DESCRIBE_GRAPH_TOOL = {
-    "name": "describe_graph",
-    "description": "Связи и символы.",
-    "input_schema": {
-        "type": "object",
-        "additionalProperties": False,
-        "required": ["edges","anchors","symbols"],
-        "properties": {
-            "edges": {"type": "array", "items": {"type": "string"}},
-            "anchors": {"type": "array", "items": {"type": "string"}},
-            "symbols": {"type": "array", "items": {"type": "string"}}
-        }
-    }
-}
-
-DESCRIBE_QUALITY_TOOL = {
-    "name": "describe_quality",
-    "description": "Качество и слой.",
-    "input_schema": {
-        "type": "object",
-        "additionalProperties": False,
-        "required": ["has_documentation","layer","bm25_boost_terms","likely_queries","complexity","confidence"],
-        "properties": {
-            "has_documentation": {"type": "boolean"},
-            "layer": {"type": "string"},
-            "bm25_boost_terms": {"type": "array", "items": {"type": "string"}},
-            "likely_queries": {"type": "array", "items": {"type": "string"}},
-            "complexity": {"type": "number"},
-            "confidence": {"type": "number"}
-        }
-    }
-}
-
-DESCRIBE_CODE_TOOL = {
-    "name": "describe_code",
-    "description": "Имена символов кода.",
-    "input_schema": {
-        "type": "object",
-        "additionalProperties": False,
-        "required": ["function_names","class_names","variable_names"],
-        "properties": {
-            "function_names": {"type": "array", "items": {"type": "string"}},
-            "class_names": {"type": "array", "items": {"type": "string"}},
-            "variable_names": {"type": "array", "items": {"type": "string"}}
-        }
-    }
-}
-
-DESCRIBE_FINDINGS_TOOL = {
-    "name": "describe_findings",
-    "description": "Выводы и баги.",
-    "input_schema": {
-        "type": "object",
-        "additionalProperties": False,
-        "required": ["improvements","potential_bugs","notes","conclusions","open_questions","highlights"],
-        "properties": {
-            "improvements": {"type": "string"},
-            "potential_bugs": {"type": "string"},
-            "notes": {"type": "string"},
-            "conclusions": {"type": "string"},
-            "open_questions": {"type": "string"},
-            "highlights": {"type": "string"}
-        }
-    }
-}
-
-DESCRIBE_TOOLS = [
-    DESCRIBE_IDENTITY_TOOL,
-    DESCRIBE_API_TOOL,
-    DESCRIBE_ENTITIES_TOOL,
-    DESCRIBE_DEPS_TOOL,
-    DESCRIBE_SECURITY_TOOL,
-    DESCRIBE_FLAGS_TOOL,
-    DESCRIBE_GRAPH_TOOL,
-    DESCRIBE_QUALITY_TOOL,
-    DESCRIBE_CODE_TOOL,
-    DESCRIBE_FINDINGS_TOOL,
-]
