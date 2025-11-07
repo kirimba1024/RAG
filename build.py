@@ -53,9 +53,6 @@ def delete_es_chunks(rel_path):
         allow_no_indices=True
     )
 
- 
-
-
 def index_es_file(rel_path, new_hash):
     t0 = time.time()
     full_path = REPOS_SAFE_ROOT / rel_path
@@ -170,6 +167,7 @@ def process_files():
 
 def main():
     try:
+        warm_claude_cache()
         process_files()
     finally:
         ES.close()

@@ -122,3 +122,11 @@
 - images/elasticsearch: удалён index_files.json; entrypoint.sh/Dockerfile создают/копируют только index_chunks.json
 - utils.py: удалён ES_INDEX_FILES; добавлен EMBED_DIMS (по умолчанию 1024)
 - docker-compose.yml: переменная ES_INDEX_FILES удалена
+ 
+=== Регистрозависимость path и связанные правки (2025-11-07) ===
+- Принято: путь в ES должен быть регистрозависимым (Linux-совместимость), никакой нормализации.
+- images/elasticsearch/index_chunks.json: поле path → { "type": "keyword" } (убран normalizer lower_ascii).
+- build.py: используем исходный регистр пути при индексации и удалении; от идеи принудительного .lower() отказались.
+- Прогрев Claude: warm_claude_cache() вызывается перед индексацией; прогреваются system-промпты и схемы инструментов, включая describe (крупный тул).
+- tools.py: describe_tool переименован в describe; исправлены uniqueItems → True.
+- ES mapping: добавлены поля io, symbols, security_flags для согласования с DESCRIBE_TOOL.

@@ -84,7 +84,7 @@ SPLIT_BLOCKS_TOOL = {
 }
 
 DESCRIBE_TOOL = {
-    "name": "describe_tool",
+    "name": "describe",
     "description": "Верни один объект по схеме ниже.",
     "input_schema": {
         "type": "object",
@@ -142,8 +142,8 @@ DESCRIBE_TOOL = {
             "language": {"type": "string", "minLength": 1, "maxLength": 32, "description": "Основной язык/диалект (java, ts, yaml, md, sql…)."},
             "purpose": {"type": "string", "minLength": 1, "maxLength": 240, "description": "Зачем нужен файл."},
             "file_type": {"type": "string", "enum": ["code", "markup", "config", "schema", "doc", "data", "binary", "mixed"], "description": "Общий тип содержимого."},
-            "tags": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 40}, "maxItems": 10, "description": "Главные ключевые теги, метки."},
-            "key_points": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 80}, "maxItems": 3, "description": "Ключевые тезисы."},
+            "tags": {"type": "array", "minItems": 1, "uniqueItems": True, "items": {"type": "string", "minLength": 1, "maxLength": 40}, "maxItems": 10, "description": "Главные ключевые теги, метки."},
+            "key_points": {"type": "array", "minItems": 1, "uniqueItems": True, "items": {"type": "string", "minLength": 1, "maxLength": 80}, "maxItems": 3, "description": "Ключевые тезисы."},
             "http_endpoints": { "type": "array", "items": {"type": "string"}, "description": "HTTP endpoints (method path)"},
             "apis": { "type": "array", "items": {"type": "string"}, "description": "API спецификации/идентификаторы" },
             "entities": { "type": "array", "items": {"type": "string"}, "description": "Сущности/доменные объекты" },
