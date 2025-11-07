@@ -13,7 +13,7 @@ from utils import (
     EMBED_MODEL, REPOS_SAFE_ROOT, git_blob_oid, setup_logging, is_ignored, to_posix,
     CLAUDE_MODEL, ANTHROPIC_API_KEY, LANG_BY_EXT, load_prompt
 )
-from tools import SPLIT_BLOCKS_TOOL, DESCRIBE_TOOL
+from tools import SPLIT_BLOCKS_TOOL, DESCRIBE_TOOLS
 
 logger = setup_logging(Path(__file__).stem)
 
@@ -24,24 +24,6 @@ EMBEDDING = HuggingFaceEmbedding(EMBED_MODEL, normalize=True)
 
 SPLIT_SYSTEM = load_prompt("prompts/split_blocks.txt")
 DESCRIBE_SYSTEM = load_prompt("prompts/describe.txt")
-
-def warm_claude_cache():
-    CLAUDE.messages.create(
-        model=CLAUDE_MODEL,
-        max_tokens=128,
-        temperature=0,
-        system=SPLIT_SYSTEM,
-        messages=[{"role": "user", "content": "warm"}],
-        tools=[SPLIT_BLOCKS_TOOL]
-    )
-    CLAUDE.messages.create(
-        model=CLAUDE_MODEL,
-        max_tokens=128,
-        temperature=0,
-        system=DESCRIBE_SYSTEM,
-        messages=[{"role": "user", "content": "warm"}],
-        tools=[DESCRIBE_TOOL]
-    )
 
 def delete_es_chunks(rel_path):
     query = {"term": {"path": rel_path}}
@@ -72,9 +54,10 @@ def index_es_file(rel_path, new_hash):
         model=CLAUDE_MODEL,
         max_tokens=4096,
         temperature=0,
-        system=SPLIT_SYSTEM,
-        messages=[{"role": "user", "content": file_text}],
-        tools=[SPLIT_BLOCKS_TOOL]
+        system=[{"type": "text", "text": SPLIT_SYSTEM, "cache_control": {"type": "ephemeral"}}],
+        messages=[{"role": "user", "content": [{"type": "text", "text": file_text, "cache_control": {"type": "ephemeral"}}]}],
+        tools=[SPLIT_BLOCKS_TOOL],
+        extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"}
     )
     blocks = response.content[0].input["blocks"]
     lines = file_text.count('\n') + 1
@@ -87,15 +70,21 @@ def index_es_file(rel_path, new_hash):
         start = block_def["start_line"]
         end = block_def["end_line"]
         block_text = '\n'.join(lines_list[start-1:end])
-        block_response = CLAUDE.messages.create(
-            model=CLAUDE_MODEL,
-            max_tokens=4096,
-            temperature=0,
-            system=DESCRIBE_SYSTEM,
-            messages=[{"role": "user", "content": block_text}],
-            tools=[DESCRIBE_TOOL]
-        )
-        meta = block_response.content[0].input
+        meta = {}
+        for tool_def in DESCRIBE_TOOLS:
+            step_response = CLAUDE.messages.create(
+                model=CLAUDE_MODEL,
+                max_tokens=4096,
+                temperature=0,
+                system=[{"type": "text", "text": DESCRIBE_SYSTEM, "cache_control": {"type": "ephemeral"}}],
+                messages=[{"role": "user", "content": [
+                    {"type": "text", "text": block_text, "cache_control": {"type": "ephemeral"}}
+                ]}],
+                tools=[tool_def],
+                tool_choice={"type": "tool", "name": tool_def["name"]},
+                extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"}
+            )
+            meta.update(step_response.content[0].input)
         embedding = EMBEDDING.get_text_embedding(block_text)
         chunks.append({
             "_op_type": "index",
@@ -167,7 +156,6 @@ def process_files():
 
 def main():
     try:
-        warm_claude_cache()
         process_files()
     finally:
         ES.close()

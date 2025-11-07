@@ -118,27 +118,32 @@
    - Фильтрация по path_prefix
    - Reranking через cross-encoder
    - Богатая схема метаданных (100+ полей) для точного поиска
+   - Единый индекс `chunks`; специальный чанк `chunk_id=0` хранит метаданные всего файла
 
 2. **LLM-обогащение чанков** (build.py) — двухфазный процесс
    
-   **Фаза 1: Семантическое разбиение**
+  **Фаза 1: Семантическое разбиение**
    - Claude разбивает файл на логические блоки
    - Каждый блок: `start_line`, `end_line`, `title`, `kind`
    - Универсальный `kind` (не только function/class, но и section, table, config, paragraph и т.д.)
    - Работает для любого контента: код, HTML, таблицы, XML, YAML, документы
    
-   **Фаза 2: Обогащение метаданными**
-   - Каждый блок анализируется отдельно через Claude
-   - Заполняются 100+ полей в зависимости от типа контента:
-     - **Базовые**: `chunk_title`, `chunk_summary`, `purpose`, `tags`, `entities`
-     - **Код**: `public_symbols`, `deps_imports`, `java_annotations`, `spring_endpoints`, `ts_types`, `react_components`
-     - **SQL**: `sql_kind`, `sql_tables`, `sql_columns`, `sql_relations`, `sql_effects`
-     - **Конфиги**: `config_keys_yaml`, `k8s_kind`, `k8s_metadata_name`, `ci_jobs`
-     - **API**: `apis`, `openapi_paths`, `grpc_service`, `node_routes`
-     - **Документы**: `doc_type`, `headings`, `table_headers`, `links`
-     - **Безопасность**: `security_flags`, `secrets_refs`, `pii_fields`, `crypto_algorithms`
-     - **И многое другое**: `io`, `feature_flags`, `likely_queries`, `neighbor_hints`
-   - Инкрементальная индексация по hash файлов (только изменённые)
+  **Фаза 2: Обогащение метаданными**
+  - Каждый блок анализируется отдельно через Claude (набор микро-тулов `describe_*`)
+  - Заполнение 100+ полей выполняется пошагово вызовами ~10 микро-тулов (по тематическим группам)
+  - Категории полей (сокращённо):
+    - **Идентификация**: `name`, `title`, `description`, `summary`, `detailed`, `language`, `purpose`, `file_type`, `tags`, `key_points`
+    - **Интерфейсы**: `http_endpoints`, `apis`, `io`
+    - **Сущности**: `entities`, `domain_objects`, `table_columns`
+    - **Зависимости**: `imports`, `dependencies`
+    - **Безопасность/права**: `permissions_roles`, `security_flags`, `vulnerabilities`, `secrets_found`
+    - **Конфигурация**: `config_keys`, `feature_flags`, `todos`
+    - **Связи/символы**: `edges`, `anchors`, `symbols`
+    - **Качество**: `has_documentation`, `layer`, `bm25_boost_terms`, `likely_queries`, `complexity`, `confidence`
+    - **Код**: `function_names`, `class_names`, `variable_names`
+    - **Выводы**: `improvements`, `potential_bugs`, `notes`, `conclusions`, `open_questions`, `highlights`
+  - Пер‑запросное prompt caching (ephemeral) для системного промпта и текста чанка; схемы тулов не кэшируются как текст
+  - Инкрементальная индексация по hash файлов (только изменённые)
 
 3. **Docker Sandbox** — безопасное выполнение команд
    - Изоляция, read-only, ограничения ресурсов

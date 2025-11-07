@@ -130,3 +130,11 @@
 - Прогрев Claude: warm_claude_cache() вызывается перед индексацией; прогреваются system-промпты и схемы инструментов, включая describe (крупный тул).
 - tools.py: describe_tool переименован в describe; исправлены uniqueItems → True.
 - ES mapping: добавлены поля io, symbols, security_flags для согласования с DESCRIBE_TOOL.
+
+=== Индексация: пошаговый describe и per-request prompt caching (2025-11-07) ===
+- Отказ от глобального прогрева: удалены warm-вызовы, используем per-request ephemeral caching (anthropic-beta: prompt-caching-2024-07-31).
+- DESCRIBE_TOOL: заменён на набор из ~10 микро-тулов (describe_identity, describe_api, describe_entities, ...). Пошагово вызываем каждый тул.
+- Убран плейсхолдер {FIELDS} из логики; system стабилен, user содержит только текст чанка.
+- Кэшируем только крупные блоки: DESCRIBE_SYSTEM и текст чанка; список полей маленький и передаётся динамически.
+- Схемы tool не кэшируем текстом; передаём только в параметре tools (как положено).
+- meta собирается через update ответа тула (без дополнительных варнингов по полям).
