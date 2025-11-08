@@ -5,7 +5,7 @@ from pathlib import Path
 logger = setup_logging(Path(__file__).stem)
 
 TOOLS_MAP = {
-    "main_search": lambda p: main_search(p["question"], p["path_prefix"], p["top_n"]),
+    "main_search": lambda p: main_search(p["question"], p["path_prefix"], p["top_n"], p.get("signals")),
     "code_stats": lambda p: code_stats(p["path_prefix"]),
     "execute_command": lambda p: execute_command(p["command"]),
 }
@@ -19,13 +19,13 @@ def execute_tool(tool_name, tool_input):
 
 MAIN_SEARCH_TOOL = {
     "name": "main_search",
-    "description": "Семантический поиск по коду.",
     "input_schema": {
         "type": "object",
         "properties": {
-            "question": {"type": "string", "description": "Поисковый запрос"},
-            "path_prefix": {"type": "string", "description": "Префикс пути (пустая строка если не фильтруем)"},
-            "top_n": {"type": "integer", "minimum": 1, "maximum": 30, "description": "Количество результатов после reranking (диапазон 1-30, стандартное значение: 10)"}
+            "question": {"type": "string"},
+            "path_prefix": {"type": "string"},
+            "top_n": {"type": "integer", "minimum": 1, "maximum": 30},
+            "signals": {"type": "object", "additionalProperties": {"type": "array", "items": {"type": "string"}}}
         },
         "required": ["question", "path_prefix", "top_n"]
     }
@@ -33,11 +33,10 @@ MAIN_SEARCH_TOOL = {
 
 CODE_STATS_TOOL = {
     "name": "code_stats",
-    "description": "Базовая статистика по кодовой базе.",
     "input_schema": {
         "type": "object",
         "properties": {
-            "path_prefix": {"type": "string", "description": "Префикс пути (пустая строка если не фильтруем)"}
+            "path_prefix": {"type": "string"}
         },
         "required": ["path_prefix"]
     }
@@ -45,11 +44,10 @@ CODE_STATS_TOOL = {
 
 EXECUTE_COMMAND_TOOL = {
     "name": "execute_command",
-    "description": "Выполнение команд в изолированном контейнере.",
     "input_schema": {
         "type": "object",
         "properties": {
-            "command": {"type": "string", "description": "Команда для выполнения"}
+            "command": {"type": "string"}
         },
         "required": ["command"]
     }
@@ -57,7 +55,6 @@ EXECUTE_COMMAND_TOOL = {
 
 SPLIT_BLOCKS_TOOL = {
     "name": "split_blocks",
-    "description": "Верни один объект по схеме ниже.",
     "input_schema": {
         "type": "object",
         "additionalProperties": False,
@@ -66,16 +63,15 @@ SPLIT_BLOCKS_TOOL = {
             "blocks": {
                 "type": "array",
                 "minItems": 1,
-                "description": "Список смысловых блоков, полностью покрывающих файл.",
                 "items": {
                     "type": "object",
                     "additionalProperties": False,
                     "required": ["start_line","end_line","title","kind"],
                     "properties": {
-                        "start_line": { "type": "integer", "minimum": 1, "description": "Первая строка блока (1-индексация)." },
-                        "end_line":   { "type": "integer", "minimum": 1, "description": "Последняя строка блока (включительно)." },
-                        "title":      { "type": "string",  "minLength": 1, "maxLength": 120, "description": "Короткое имя блока (функция/секция/таблица и т.п.)." },
-                        "kind":       { "type": "string",  "minLength": 1, "maxLength": 32, "description": "Тип блока; предпочитай section, paragraph, list, list_item, table, table_header, table_row, code, config, class, function; при сомнении — logic_block; допускается своё слово." }
+                        "start_line": { "type": "integer", "minimum": 1 },
+                        "end_line":   { "type": "integer", "minimum": 1 },
+                        "title":      { "type": "string",  "minLength": 1, "maxLength": 120 },
+                        "kind":       { "type": "string",  "minLength": 1, "maxLength": 32 }
                     }
                 }
             }

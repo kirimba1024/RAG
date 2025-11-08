@@ -9,9 +9,21 @@
 Сейчас ты ТОЛЬКО собираешь данные, не отвечаешь.
 
 ИНСТРУМЕНТЫ:
-1. main_search(question, path_prefix, top_n) — ИСПОЛЬЗУЙ СНАЧАЛА. Гибридный поиск по ES → возвращает чанки с Lines X-Y.
+1. main_search(question, path_prefix, top_n, signals?) — ИСПОЛЬЗУЙ СНАЧАЛА. Гибридный поиск по ES → возвращает чанки с Lines X-Y.
+   - question: поисковый запрос
+   - path_prefix: префикс пути (пустая строка если не фильтруем)
+   - top_n: количество результатов после reranking (1-30, стандартное: 10)
+   - signals: опциональный объект для повышения релевантности. Каждое поле — массив строк для точного совпадения.
+     Доступные поля сигналов: symbols, paths, api_endpoints, keys, db_entities, dependencies, events_queues, idents, 
+     headers_auth_scopes, errors_codes, imports, functions, classes, variables, feature_flags, secrets, permissions, 
+     roles, config_keys, dtos, entities, domain_objects, bm25_boost_terms, io, tags, key_points, security_flags, todos.
+     Пример: {"signals": {"symbols": ["UserService", "AuthHandler"], "functions": ["login", "logout"]}}
+
 2. execute_command(command) — grep/find в живом дереве, когда нужно найти точные паттерны или проанализировать структуру.
+   - command: команда для выполнения в изолированном контейнере
+
 3. code_stats(path_prefix) — «Сколько и чего» в данном сегменте кодовой базы.
+   - path_prefix: префикс пути (пустая строка если не фильтруем)
 
 ВАЖНО: execute_command может заменить многие инструменты. 
 Доступные утилиты: grep, find, awk, sed, bash, curl, wget, git, jq, tree, file, diff, less, vim, cat, head, 

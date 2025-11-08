@@ -4,3 +4,10 @@
 Строки 1-индексация; блоки упорядочены по start_line; перекрытия возможны, но избегай
 Верни результат одним вызовом split_blocks, заполнив только blocks со списком объектов {start_line, end_line, title, kind}
 Ничего больше не делай и не отвечай текстом
+
+Схема split_blocks:
+- blocks: массив объектов, полностью покрывающих файл
+  - start_line: первая строка блока (1-индексация), integer >= 1
+  - end_line: последняя строка блока (включительно), integer >= 1
+  - title: короткое имя блока (функция/секция/таблица и т.п.), string 1-120 символов
+  - kind: тип блока, string 1-32 символа. Предпочитай: section, paragraph, list, list_item, table, table_header, table_row, code, config, class, function; при сомнении — logic_block; допускается своё слово

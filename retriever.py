@@ -13,6 +13,37 @@ from utils import ES_URL, ES_INDEX, EMBED_MODEL, RERANK_MODEL, setup_logging
 
 logger = setup_logging(Path(__file__).stem)
 
+FIELD_WEIGHTS = {
+    "symbols": 11.0,
+    "paths": 9.0,
+    "api_endpoints": 9.0,
+    "keys": 8.0,
+    "db_entities": 8.0,
+    "dependencies": 7.0,
+    "events_queues": 7.0,
+    "idents": 5.0,
+    "headers_auth_scopes": 5.0,
+    "errors_codes": 5.0,
+    "imports": 4.0,
+    "functions": 4.0,
+    "classes": 4.0,
+    "variables": 4.0,
+    "feature_flags": 4.0,
+    "secrets": 4.0,
+    "permissions": 4.0,
+    "roles": 4.0,
+    "config_keys": 3.0,
+    "dtos": 3.0,
+    "entities": 3.0,
+    "domain_objects": 3.0,
+    "bm25_boost_terms": 3.0,
+    "io": 2.0,
+    "tags": 1.0,
+    "key_points": 1.0,
+    "security_flags": 1.0,
+    "todos": 1.0,
+}
+
 ES = Elasticsearch(ES_URL, request_timeout=30, max_retries=3, retry_on_timeout=True)
 
 Settings.embed_model = HuggingFaceEmbedding(EMBED_MODEL, normalize=True)
@@ -28,18 +59,34 @@ def normal_prefix(id_prefix):
 
 
 class HybridESRetriever(BaseRetriever):
-    def __init__(self, es, index, path_prefix: str, top_k: int):
+    def __init__(self, es, index, path_prefix: str, top_k: int, signals):
         super().__init__()
         self.es = es
         self.index = index
         self.top_k = top_k
         self.path_prefix = normal_prefix(path_prefix)
+        self.signals = signals
 
     def _retrieve(self, query_bundle: QueryBundle) -> List[NodeWithScore]:
         query_embedding = Settings.embed_model.get_text_embedding(query_bundle.query_str)
         filters = []
         if self.path_prefix:
             filters.append({"prefix": {"path": self.path_prefix}})
+        should_clauses = [{
+            "multi_match": {
+                "query": query_bundle.query_str,
+                "fields": ["text^1.0", "text.ru^1.3", "text.en^1.2"],
+            }
+        }]
+        if self.signals:
+            for field_name, values in self.signals.items():
+                if values and field_name in FIELD_WEIGHTS:
+                    should_clauses.append({
+                        "terms": {
+                            field_name: values,
+                            "boost": FIELD_WEIGHTS[field_name]
+                        }
+                    })
         body = {
             "size": self.top_k,
             "knn": {
@@ -51,14 +98,7 @@ class HybridESRetriever(BaseRetriever):
             "query": {
                 "bool": {
                     "filter": [{"range": {"chunk_id": {"gte": 1}}}],
-                    "should": [
-                        {
-                            "multi_match": {
-                                "query": query_bundle.query_str,
-                                "fields": ["text^1.0", "text.ru^1.3", "text.en^1.2"],
-                            }
-                        }
-                    ]
+                    "should": should_clauses
                 }
             }
         }
@@ -87,8 +127,8 @@ class HybridESRetriever(BaseRetriever):
             nodes.append(NodeWithScore(node=node, score=float(hit["_score"])))
         return nodes
 
-def retrieve_fusion_nodes(question: str, path_prefix: str, top_n: int) -> List[BaseNode]:
-    retriever = HybridESRetriever(es=ES, index=ES_INDEX, path_prefix=path_prefix, top_k=top_n * 3)
+def retrieve_fusion_nodes(question: str, path_prefix: str, top_n: int, signals) -> List[BaseNode]:
+    retriever = HybridESRetriever(es=ES, index=ES_INDEX, path_prefix=path_prefix, top_k=top_n * 3, signals=signals)
     candidates = retriever.retrieve(question)
     logger.info(f"🔍 Retriever вернул {len(candidates)} чанков (query: '{question[:50]}...')")
     qb = QueryBundle(query_str=question)
@@ -97,8 +137,8 @@ def retrieve_fusion_nodes(question: str, path_prefix: str, top_n: int) -> List[B
     logger.info(f"⭐ Reranker отобрал {len(reranked)} чанков из {len(candidates)}")
     return [nws.node for nws in reranked]
 
-def main_search(question: str, path_prefix: str, top_n: int) -> str:
-    nodes = retrieve_fusion_nodes(question, path_prefix, top_n)
+def main_search(question: str, path_prefix: str, top_n: int, signals) -> str:
+    nodes = retrieve_fusion_nodes(question, path_prefix, top_n, signals)
     results = []
     for node in nodes:
         doc_id = node.metadata['doc_id']
