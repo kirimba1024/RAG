@@ -28,8 +28,6 @@ FIELD_WEIGHTS = {
     "secrets": 4.0,
     "permissions": 4.0,
     "roles": 4.0,
-    "apis": 3.0,
-    "endpoints": 3.0,
     "config_keys": 3.0,
     "dtos": 3.0,
     "entities": 3.0,

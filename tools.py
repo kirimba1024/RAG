@@ -143,14 +143,12 @@ DESCRIBE_SIGNALS_B_TOOL = {
     "input_schema": {
         "type": "object",
         "additionalProperties": False,
-        "required": ["feature_flags", "secrets", "permissions", "roles", "apis", "endpoints", "config_keys", "dtos", "entities", "domain_objects", "bm25_boost_terms", "io", "tags", "key_points", "likely_queries", "security_flags", "todos"],
+        "required": ["feature_flags", "secrets", "permissions", "roles", "config_keys", "dtos", "entities", "domain_objects", "bm25_boost_terms", "io", "tags", "key_points", "likely_queries", "security_flags", "todos"],
         "properties": {
             "feature_flags":       {"type": "array", "items": {"type": "string"}},
             "secrets":             {"type": "array", "items": {"type": "string"}},
             "permissions":         {"type": "array", "items": {"type": "string"}},
             "roles":               {"type": "array", "items": {"type": "string"}},
-            "apis":                {"type": "array", "items": {"type": "string"}},
-            "endpoints":           {"type": "array", "items": {"type": "string"}},
             "config_keys":         {"type": "array", "items": {"type": "string"}},
             "dtos":                {"type": "array", "items": {"type": "string"}},
             "entities":            {"type": "array", "items": {"type": "string"}},
