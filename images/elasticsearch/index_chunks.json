@@ -123,8 +123,7 @@
       "graph_answers": { "type": "keyword", "normalizer": "lower_ascii" },
 
       
-      "links":       { "type": "object", "enabled": false },
-      "links_qa":    { "type": "object", "enabled": false }
+      "links":       { "type": "object", "enabled": false }
     }
   }
 }
