@@ -6,7 +6,7 @@ logger = setup_logging(Path(__file__).stem)
 
 TOOLS_MAP = {
     "main_search": lambda p: main_search(p["question"], p["path_prefix"], p["top_n"], p.get("signals"), p.get("fields"), p.get("show_line_numbers")),
-    "code_stats": lambda p: code_stats(p["path_prefix"]),
+    "code_stats": lambda p: code_stats(p.get("path_prefix", "")),
     "execute_command": lambda p: execute_command(p["command"]),
 }
 
@@ -39,8 +39,7 @@ CODE_STATS_TOOL = {
         "type": "object",
         "properties": {
             "path_prefix": {"type": "string"}
-        },
-        "required": ["path_prefix"]
+        }
     }
 }
 
@@ -161,15 +160,15 @@ DESCRIBE_SIGNALS_B_TOOL = {
     }
 }
 
-DESCRIBE_SIGNALS_С_TOOL = {
-    "name": "describe_signals_с",
+DESCRIBE_SIGNALS_C_TOOL = {
+    "name": "describe_signals_c",
     "input_schema": {
         "type": "object",
         "additionalProperties": False,
         "required": ["graph_questions", "graph_answers"],
         "properties": {
             "graph_questions":     {"type": "array", "items": {"type": "string"}},
-            "graph_answers":      {"type": "array", "items": {"type": "string"}},
+            "graph_answers":      {"type": "array", "items": {"type": "string"}}
         }
     }
 }

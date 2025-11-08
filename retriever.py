@@ -10,7 +10,7 @@ from llama_index.core import Settings
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.postprocessor.sbert_rerank import SentenceTransformerRerank
 
-from utils import ES_URL, ES_INDEX, EMBED_MODEL, RERANK_MODEL, setup_logging
+from utils import ES_URL, ES_INDEX_CHUNKS, EMBED_MODEL, RERANK_MODEL, setup_logging
 
 logger = setup_logging(Path(__file__).stem)
 
@@ -49,7 +49,7 @@ ES = Elasticsearch(ES_URL, request_timeout=30, max_retries=3, retry_on_timeout=T
 Settings.embed_model = HuggingFaceEmbedding(EMBED_MODEL, normalize=True)
 embedding_dim = len(Settings.embed_model.get_text_embedding("test"))
 if embedding_dim != 1024:
-    raise ValueError(f"Несоответствие размерности эмбеддинга: модель {EMBED_MODEL} возвращает {embedding_dim}, а ES настроен на 1024. Измените dims в images/elasticsearch/index.json или используйте модель с размерностью 1024.")
+    raise ValueError(f"Несоответствие размерности эмбеддинга: модель {EMBED_MODEL} возвращает {embedding_dim}, а ES настроен на 1024. Измените dims в images/elasticsearch/index_chunks.json или используйте модель с размерностью 1024.")
 
 DEVICE = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
 RERANKER = SentenceTransformerRerank(model=RERANK_MODEL, top_n=10, device=DEVICE)
@@ -111,8 +111,8 @@ class HybridESRetriever(BaseRetriever):
             }
         }
         if filters:
-            body["query"]["bool"]["filter"] = filters
-            knn_filter = {"bool": {"must": filters}}
+            body["query"]["bool"]["filter"] = [{"range": {"chunk_id": {"gte": 1}}}] + filters
+            knn_filter = {"bool": {"must": [{"range": {"chunk_id": {"gte": 1}}}] + filters}}
             body["knn"]["filter"] = knn_filter
         response = self.es.search(
             index=self.index,
@@ -129,7 +129,7 @@ class HybridESRetriever(BaseRetriever):
         return nodes
 
 def retrieve_fusion_nodes(question: str, path_prefix: str, top_n: int, signals) -> List[BaseNode]:
-    retriever = HybridESRetriever(es=ES, index=ES_INDEX, path_prefix=path_prefix, top_k=top_n * 3, signals=signals)
+    retriever = HybridESRetriever(es=ES, index=ES_INDEX_CHUNKS, path_prefix=path_prefix, top_k=top_n * 3, signals=signals)
     candidates = retriever.retrieve(question)
     logger.info(f"🔍 Retriever вернул {len(candidates)} чанков (query: '{question[:50]}...')")
     qb = QueryBundle(query_str=question)
@@ -309,7 +309,7 @@ def code_stats(path_prefix: str = "") -> str:
             }
         }
     }
-    response = ES.search(index=ES_INDEX, body=query, request_timeout=60, request_cache=True)
+    response = ES.search(index=ES_INDEX_CHUNKS, body=query, request_timeout=60, request_cache=True)
     aggs = response["aggregations"]
     results = [f"📊 Статистика кодовой базы" + (f" ({path_prefix})" if path_prefix else "")]
     results.extend([
