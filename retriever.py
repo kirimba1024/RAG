@@ -137,15 +137,24 @@ def retrieve_fusion_nodes(question: str, path_prefix: str, top_n: int, signals) 
     logger.info(f"⭐ Reranker отобрал {len(reranked)} чанков из {len(candidates)}")
     return [nws.node for nws in reranked]
 
-def main_search(question: str, path_prefix: str, top_n: int, signals, fields) -> str:
+def main_search(question: str, path_prefix: str, top_n: int, signals, fields, show_line_numbers) -> str:
     nodes = retrieve_fusion_nodes(question, path_prefix, top_n, signals)
     results = []
     for node in nodes:
-        doc_id = node.metadata['path']
-        chunk_info = f"[chunk {node.metadata['chunk_id']}/{node.metadata['chunks']}]"
-        line_info = f"lines {node.metadata['start_line']}-{node.metadata['end_line']}"
-        header = f"{doc_id} {chunk_info} {line_info}"
-        result_text = f"{header}:\n{node.text}"
+        chunk_id = node.id_
+        line_info = f"L:{node.metadata['start_line']}-{node.metadata['end_line']}/{node.metadata['file_lines']}"
+        kind_info = f"kind:{node.metadata['kind']}"
+        lang_info = f"lang:{node.metadata['lang']}"
+        mime_info = f"mime:{node.metadata['mime']}"
+        size_info = f"size:{node.metadata['size'] / 1024 / 1024:.2f}/{node.metadata['file_size'] / 1024 / 1024:.2f}mb"
+        header = f"{chunk_id} {line_info} {kind_info} {lang_info} {mime_info} {size_info}"
+        text = node.text
+        if show_line_numbers:
+            lines = text.split('\n')
+            start_line = node.metadata['start_line']
+            numbered_lines = [f"{start_line + i:4d} | {line}" for i, line in enumerate(lines)]
+            text = '\n'.join(numbered_lines)
+        result_text = f"{header}:\n{text}"
         if fields:
             for field in fields:
                 if field in node.metadata:

@@ -92,6 +92,7 @@ def index_es_file(rel_path, new_hash):
             )
             meta.update(step_response.content[0].input)
         embedding = EMBEDDING.get_text_embedding(block_text)
+        chunk_size = len(block_text.encode('utf-8'))
         chunks.append({
             "_op_type": "index",
             "_index": ES_INDEX_CHUNKS,
@@ -106,8 +107,9 @@ def index_es_file(rel_path, new_hash):
             "end_line": end,
             "kind": block_def["kind"],
             "lang": lang,
-            "size": file_size,
-            "lines": lines,
+            "file_size": file_size,
+            "size": chunk_size,
+            "file_lines": lines,
             "extension": file_extension,
             "filename": file_name,
             "mime": file_mime,

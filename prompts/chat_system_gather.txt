@@ -9,10 +9,11 @@
 Сейчас ты ТОЛЬКО собираешь данные, не отвечаешь.
 
 ИНСТРУМЕНТЫ:
-1. main_search(question, path_prefix, top_n, signals?, fields?) — ИСПОЛЬЗУЙ СНАЧАЛА. Гибридный поиск по ES → возвращает чанки с Lines X-Y.
+1. main_search(question, path_prefix, top_n, signals?, fields?, show_line_numbers?) — ИСПОЛЬЗУЙ СНАЧАЛА. Гибридный поиск по ES → возвращает чанки с Lines X-Y.
    - question: поисковый запрос
    - path_prefix: префикс пути (пустая строка если не фильтруем)
    - top_n: количество результатов после reranking (1-30, стандартное: 10)
+   - show_line_numbers: опциональный булев флаг. Если true, добавляет номера строк к тексту чанка с учётом смещения start_line (первая строка чанка получает номер start_line, следующая start_line+1 и т.д.). Полезно для точной навигации по коду и ссылок на конкретные строки.
    - signals: опциональный объект для повышения релевантности. Каждое поле — массив строк для точного совпадения.
      Доступные поля сигналов: symbols, paths, api_endpoints, keys, db_entities, dependencies, events_queues, idents, 
      headers_auth_scopes, errors_codes, imports, functions, classes, variables, feature_flags, secrets, permissions, 
