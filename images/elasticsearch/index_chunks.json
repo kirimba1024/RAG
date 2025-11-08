@@ -87,23 +87,6 @@
       "vulnerabilities": { "type": "text", "analyzer": "code_friendly" },
 
 
-      "feature_flags": { "type": "keyword", "normalizer": "lower_ascii" },
-      "secrets":      { "type": "keyword", "normalizer": "lower_ascii" },
-      "permissions":  { "type": "keyword", "normalizer": "lower_ascii" },
-      "roles":        { "type": "keyword", "normalizer": "lower_ascii" },
-      "config_keys":  { "type": "keyword", "normalizer": "lower_ascii" },
-      "dtos":         { "type": "keyword", "normalizer": "lower_ascii" },
-      "entities":     { "type": "keyword", "normalizer": "lower_ascii" },
-      "domain_objects": { "type": "keyword", "normalizer": "lower_ascii" },
-      "bm25_boost_terms": { "type": "keyword", "normalizer": "lower_ascii" },
-      "io":           { "type": "keyword", "normalizer": "lower_ascii" },
-      "tags":         { "type": "keyword", "normalizer": "lower_ascii" },
-      "key_points":   { "type": "keyword", "normalizer": "lower_ascii" },
-      "likely_queries": { "type": "keyword", "normalizer": "lower_ascii" },
-      "security_flags": { "type": "keyword", "normalizer": "lower_ascii" },
-      "todos":        { "type": "keyword", "normalizer": "lower_ascii" },
-
-
       "symbols":     { "type": "keyword", "normalizer": "lower_ascii" },
       "paths":       { "type": "keyword", "normalizer": "lower_ascii" },
       "keys":        { "type": "keyword", "normalizer": "lower_ascii" },
@@ -118,6 +101,26 @@
       "functions":   { "type": "keyword", "normalizer": "lower_ascii" },
       "classes":     { "type": "keyword", "normalizer": "lower_ascii" },
       "variables":   { "type": "keyword", "normalizer": "lower_ascii" },
+
+
+      "feature_flags": { "type": "keyword", "normalizer": "lower_ascii" },
+      "secrets":      { "type": "keyword", "normalizer": "lower_ascii" },
+      "permissions":  { "type": "keyword", "normalizer": "lower_ascii" },
+      "roles":        { "type": "keyword", "normalizer": "lower_ascii" },
+      "config_keys":  { "type": "keyword", "normalizer": "lower_ascii" },
+      "dtos":         { "type": "keyword", "normalizer": "lower_ascii" },
+      "entities":     { "type": "keyword", "normalizer": "lower_ascii" },
+      "domain_objects": { "type": "keyword", "normalizer": "lower_ascii" },
+      "bm25_boost_terms": { "type": "keyword", "normalizer": "lower_ascii" },
+      "io":           { "type": "keyword", "normalizer": "lower_ascii" },
+      "tags":         { "type": "keyword", "normalizer": "lower_ascii" },
+      "key_points":   { "type": "keyword", "normalizer": "lower_ascii" },
+      "security_flags": { "type": "keyword", "normalizer": "lower_ascii" },
+      "todos":        { "type": "keyword", "normalizer": "lower_ascii" },
+
+
+      "graph_questions": { "type": "keyword", "normalizer": "lower_ascii" },
+      "graph_answers": { "type": "keyword", "normalizer": "lower_ascii" },
 
       
       "links":       { "type": "object", "enabled": false }

@@ -143,7 +143,7 @@ DESCRIBE_SIGNALS_B_TOOL = {
     "input_schema": {
         "type": "object",
         "additionalProperties": False,
-        "required": ["feature_flags", "secrets", "permissions", "roles", "config_keys", "dtos", "entities", "domain_objects", "bm25_boost_terms", "io", "tags", "key_points", "likely_queries", "security_flags", "todos"],
+        "required": ["feature_flags", "secrets", "permissions", "roles", "config_keys", "dtos", "entities", "domain_objects", "bm25_boost_terms", "io", "tags", "key_points", "security_flags", "todos"],
         "properties": {
             "feature_flags":       {"type": "array", "items": {"type": "string"}},
             "secrets":             {"type": "array", "items": {"type": "string"}},
@@ -157,9 +157,21 @@ DESCRIBE_SIGNALS_B_TOOL = {
             "io":                  {"type": "array", "items": {"type": "string"}},
             "tags":                {"type": "array", "items": {"type": "string"}},
             "key_points":          {"type": "array", "items": {"type": "string"}},
-            "likely_queries":      {"type": "array", "items": {"type": "string"}},
             "security_flags":      {"type": "array", "items": {"type": "string"}},
             "todos":               {"type": "array", "items": {"type": "string"}}
+        }
+    }
+}
+
+DESCRIBE_SIGNALS_С_TOOL = {
+    "name": "describe_signals_с",
+    "input_schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["graph_questions", "graph_answers"],
+        "properties": {
+            "graph_questions":     {"type": "array", "items": {"type": "string"}},
+            "graph_answers":      {"type": "array", "items": {"type": "string"}},
         }
     }
 }

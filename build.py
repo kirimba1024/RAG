@@ -13,7 +13,7 @@ from utils import (
     EMBED_MODEL, REPOS_SAFE_ROOT, git_blob_oid, setup_logging, is_ignored, to_posix,
     CLAUDE_MODEL, ANTHROPIC_API_KEY, LANG_BY_EXT, load_prompt
 )
-from tools import SPLIT_BLOCKS_TOOL, DESCRIBE_CORE_TOOL, DESCRIBE_SIGNALS_A_TOOL, DESCRIBE_SIGNALS_B_TOOL
+from tools import SPLIT_BLOCKS_TOOL, DESCRIBE_CORE_TOOL, DESCRIBE_SIGNALS_A_TOOL, DESCRIBE_SIGNALS_B_TOOL, DESCRIBE_SIGNALS_С_TOOL
 
 logger = setup_logging(Path(__file__).stem)
 
@@ -25,9 +25,10 @@ EMBEDDING = HuggingFaceEmbedding(EMBED_MODEL, normalize=True)
 SPLIT_SYSTEM = load_prompt("prompts/split_blocks.txt")
 
 DESCRIBE_TOOLS = {
-    DESCRIBE_CORE_TOOL["name"]: [load_prompt("prompts/describe_core.txt"), DESCRIBE_CORE_TOOL],
-    DESCRIBE_SIGNALS_A_TOOL["name"]: [load_prompt("prompts/signals_A.txt"), DESCRIBE_SIGNALS_A_TOOL],
-    DESCRIBE_SIGNALS_B_TOOL["name"]: [load_prompt("prompts/signals_B.txt"), DESCRIBE_SIGNALS_B_TOOL],
+    DESCRIBE_CORE_TOOL["name"]: [load_prompt("prompts/describe_core.txt").format(tool_name=DESCRIBE_CORE_TOOL["name"]), DESCRIBE_CORE_TOOL],
+    DESCRIBE_SIGNALS_A_TOOL["name"]: [load_prompt("prompts/signals_A.txt").format(tool_name=DESCRIBE_SIGNALS_A_TOOL["name"]), DESCRIBE_SIGNALS_A_TOOL],
+    DESCRIBE_SIGNALS_B_TOOL["name"]: [load_prompt("prompts/signals_B.txt").format(tool_name=DESCRIBE_SIGNALS_B_TOOL["name"]), DESCRIBE_SIGNALS_B_TOOL],
+    DESCRIBE_SIGNALS_С_TOOL["name"]: [load_prompt("prompts/signals_C.txt").format(tool_name=DESCRIBE_SIGNALS_С_TOOL["name"]), DESCRIBE_SIGNALS_С_TOOL],
 }
 
 def delete_es_chunks(rel_path):

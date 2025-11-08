@@ -36,7 +36,6 @@ FIELD_WEIGHTS = {
     "io": 2.0,
     "tags": 1.0,
     "key_points": 1.0,
-    "likely_queries": 1.0,
     "security_flags": 1.0,
     "todos": 1.0,
 }

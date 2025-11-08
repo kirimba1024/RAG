@@ -139,7 +139,7 @@
     - **Безопасность/права**: `permissions_roles`, `security_flags`, `vulnerabilities`, `secrets_found`
     - **Конфигурация**: `config_keys`, `feature_flags`, `todos`
     - **Связи/символы**: `edges`, `anchors`, `symbols`
-    - **Качество**: `has_documentation`, `layer`, `bm25_boost_terms`, `likely_queries`, `complexity`, `confidence`
+    - **Качество**: `has_documentation`, `layer`, `bm25_boost_terms`, `complexity`, `confidence`
     - **Код**: `function_names`, `class_names`, `variable_names`
     - **Выводы**: `improvements`, `potential_bugs`, `notes`, `conclusions`, `open_questions`, `highlights`
   - Пер‑запросное prompt caching (ephemeral) для системного промпта и текста чанка; схемы тулов не кэшируются как текст
