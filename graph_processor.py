@@ -1,6 +1,7 @@
 from typing import List, Dict, Set, Tuple
 from collections import defaultdict
 from pathlib import Path
+from elasticsearch.helpers import bulk
 
 from utils import ES_URL, ES_INDEX_CHUNKS, setup_logging
 from elasticsearch import Elasticsearch
@@ -40,107 +41,47 @@ FIELD_WEIGHTS = {
     "todos": 1.0,
 }
 
-def get_chunk_signals(chunk_id: str) -> Dict[str, Set[str]]:
-    response = ES.get(index=ES_INDEX_CHUNKS, id=chunk_id)
-    source = response["_source"]
-    signals = {}
-    for field in FIELD_WEIGHTS.keys():
-        values = source.get(field, [])
-        if isinstance(values, list):
-            signals[field] = set(values)
-        else:
-            signals[field] = set()
-    return signals
+MIN_WEIGHT = 5.0
+MAX_LINKS_PER_CHUNK = 5
 
-def compute_edge_weight(chunk1_signals: Dict[str, Set[str]], chunk2_signals: Dict[str, Set[str]]) -> Tuple[float, Dict[str, float]]:
-    total_weight = 0.0
-    field_contributions = {}
-    for field in FIELD_WEIGHTS.keys():
-        set1 = chunk1_signals.get(field, set())
-        set2 = chunk2_signals.get(field, set())
-        intersection = set1 & set2
-        if intersection:
-            field_weight = FIELD_WEIGHTS.get(field, 1.0)
-            match_count = len(intersection)
-            weight = field_weight * match_count
-            total_weight += weight
-            field_contributions[field] = weight
-    return total_weight, field_contributions
-
-def build_chunk_graph(chunk_ids: List[str], min_weight: float = 5.0) -> Dict[str, List[Dict]]:
-    logger.info(f"Построение графа для {len(chunk_ids)} чанков")
+def main():
+    logger.info("Загрузка всех сигналов чанков в память")
     chunk_signals = {}
-    for chunk_id in chunk_ids:
-        try:
-            chunk_signals[chunk_id] = get_chunk_signals(chunk_id)
-        except Exception as e:
-            logger.warning(f"Не удалось загрузить сигналы для {chunk_id}: {e}")
-            chunk_signals[chunk_id] = {field: set() for field in FIELD_WEIGHTS.keys()}
+    query = {"size": 10000, "_source": list(FIELD_WEIGHTS.keys()), "query": {"match_all": {}}}
+    scroll = ES.search(index=ES_INDEX_CHUNKS, body=query, scroll="5m", size=1000)
+    scroll_id = scroll.get("_scroll_id")
+    while len(scroll["hits"]["hits"]) > 0:
+        for hit in scroll["hits"]["hits"]:
+            source = hit["_source"]
+            chunk_signals[hit["_id"]] = {field: set(source.get(field, [])) for field in FIELD_WEIGHTS.keys()}
+        scroll = ES.scroll(scroll_id=scroll_id, scroll="5m")
+    if scroll_id:
+        ES.clear_scroll(scroll_id=scroll_id)
+    logger.info(f"Загружено {len(chunk_signals)} чанков, построение графа")
+    chunk_ids = list(chunk_signals.keys())
     graph = defaultdict(list)
-    processed = 0
     for i, chunk_id1 in enumerate(chunk_ids):
         signals1 = chunk_signals[chunk_id1]
         for chunk_id2 in chunk_ids[i+1:]:
             signals2 = chunk_signals[chunk_id2]
-            weight, field_contributions = compute_edge_weight(signals1, signals2)
-            if weight >= min_weight:
-                sorted_contributions = sorted(field_contributions.items(), key=lambda x: x[1], reverse=True)
-                sorted_field_contributions = dict(sorted_contributions)
-                graph[chunk_id1].append({
-                    "target": chunk_id2,
-                    "weight": weight,
-                    "field_contributions": sorted_field_contributions
-                })
-                graph[chunk_id2].append({
-                    "target": chunk_id1,
-                    "weight": weight,
-                    "field_contributions": sorted_field_contributions
-                })
-        processed += 1
-        if processed % 100 == 0:
-            logger.debug(f"Обработано {processed}/{len(chunk_ids)} чанков")
-    total_edges = sum(len(edges) for edges in graph.values()) // 2
-    logger.info(f"Граф построен: {len(graph)} узлов, {total_edges} рёбер (min_weight={min_weight})")
-    return dict(graph)
-
-def filter_top_connections(graph: Dict[str, List[Dict]], max_edges_per_node: int = 5) -> Dict[str, List[Dict]]:
-    filtered = {}
-    for chunk_id, edges in graph.items():
-        sorted_edges = sorted(edges, key=lambda x: x["weight"], reverse=True)
-        filtered[chunk_id] = sorted_edges[:max_edges_per_node]
+            total_weight = 0.0
+            field_contributions = {}
+            for field in FIELD_WEIGHTS.keys():
+                intersection = signals1.get(field, set()) & signals2.get(field, set())
+                if intersection:
+                    weight = FIELD_WEIGHTS[field] * len(intersection)
+                    total_weight += weight
+                    field_contributions[field] = weight
+            if total_weight >= MIN_WEIGHT:
+                sorted_contributions = dict(sorted(field_contributions.items(), key=lambda x: x[1], reverse=True))
+                graph[chunk_id1].append({"target": chunk_id2, "weight": total_weight, "field_contributions": sorted_contributions})
+                graph[chunk_id2].append({"target": chunk_id1, "weight": total_weight, "field_contributions": sorted_contributions})
+        if (i + 1) % 100 == 0:
+            logger.debug(f"Обработано {i + 1}/{len(chunk_ids)} чанков")
+    filtered = {chunk_id: sorted(edges, key=lambda x: x["weight"], reverse=True)[:MAX_LINKS_PER_CHUNK] for chunk_id, edges in graph.items()}
     total_edges = sum(len(edges) for edges in filtered.values()) // 2
-    logger.info(f"Отфильтровано до {len(filtered)} узлов, {total_edges} рёбер (max_edges_per_node={max_edges_per_node})")
-    return filtered
-
-def get_unenriched_chunk_ids() -> List[str]:
-    query = {"size": 10000, "_source": False, "query": {"bool": {"must_not": {"exists": {"field": "links"}}}}}
-    chunk_ids = []
-    scroll = ES.search(index=ES_INDEX_CHUNKS, body=query, scroll="5m", size=1000)
-    scroll_id = scroll.get("_scroll_id")
-    while len(scroll["hits"]["hits"]) > 0:
-        chunk_ids.extend([hit["_id"] for hit in scroll["hits"]["hits"]])
-        scroll = ES.scroll(scroll_id=scroll_id, scroll="5m")
-    if scroll_id:
-        ES.clear_scroll(scroll_id=scroll_id)
-    logger.info(f"Получено {len(chunk_ids)} необогащенных chunk_id")
-    return chunk_ids
-
-def main(min_weight: float = 5.0, max_links_per_chunk: int = 5):
-    from elasticsearch.helpers import bulk
-    chunk_ids = get_unenriched_chunk_ids()
-    if not chunk_ids:
-        logger.info("Все чанки уже обогащены")
-        return
-    graph = build_chunk_graph(chunk_ids, min_weight)
-    filtered_graph = filter_top_connections(graph, max_links_per_chunk)
-    actions = []
-    for chunk_id, links in filtered_graph.items():
-        actions.append({
-            "_op_type": "update",
-            "_index": ES_INDEX_CHUNKS,
-            "_id": chunk_id,
-            "doc": {"links": links}
-        })
+    logger.info(f"Граф построен: {len(filtered)} узлов, {total_edges} рёбер")
+    actions = [{"_op_type": "update", "_index": ES_INDEX_CHUNKS, "_id": chunk_id, "doc": {"links": links}} for chunk_id, links in filtered.items()]
     if actions:
         bulk(ES, actions, chunk_size=1000, request_timeout=120)
         logger.info(f"Обновлено {len(actions)} чанков с полем links")
