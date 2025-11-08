@@ -16,7 +16,7 @@
    - signals: опциональный объект для повышения релевантности. Каждое поле — массив строк для точного совпадения.
      Доступные поля сигналов: symbols, paths, api_endpoints, keys, db_entities, dependencies, events_queues, idents, 
      headers_auth_scopes, errors_codes, imports, functions, classes, variables, feature_flags, secrets, permissions, 
-     roles, config_keys, dtos, entities, domain_objects, bm25_boost_terms, io, tags, key_points, security_flags, todos.
+     roles, config_keys, dtos, entities, domain_objects, io, tags, key_points, security_flags, todos.
      Пример: {"signals": {"symbols": ["UserService", "AuthHandler"], "functions": ["login", "logout"]}}
 
 2. execute_command(command) — grep/find в живом дереве, когда нужно найти точные паттерны или проанализировать структуру.

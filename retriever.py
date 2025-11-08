@@ -14,34 +14,33 @@ from utils import ES_URL, ES_INDEX, EMBED_MODEL, RERANK_MODEL, setup_logging
 logger = setup_logging(Path(__file__).stem)
 
 FIELD_WEIGHTS = {
-    "symbols": 11.0,
-    "paths": 9.0,
-    "api_endpoints": 9.0,
-    "keys": 8.0,
-    "db_entities": 8.0,
-    "dependencies": 7.0,
-    "events_queues": 7.0,
-    "idents": 5.0,
-    "headers_auth_scopes": 5.0,
-    "errors_codes": 5.0,
-    "imports": 4.0,
-    "functions": 4.0,
-    "classes": 4.0,
-    "variables": 4.0,
-    "feature_flags": 4.0,
-    "secrets": 4.0,
-    "permissions": 4.0,
-    "roles": 4.0,
-    "config_keys": 3.0,
-    "dtos": 3.0,
-    "entities": 3.0,
-    "domain_objects": 3.0,
-    "bm25_boost_terms": 3.0,
-    "io": 2.0,
-    "tags": 1.0,
-    "key_points": 1.0,
-    "security_flags": 1.0,
-    "todos": 1.0,
+    "symbols": 5.5,
+    "paths": 4.5,
+    "api_endpoints": 4.5,
+    "keys": 3.5,
+    "db_entities": 3.5,
+    "dependencies": 3.5,
+    "events_queues": 3.5,
+    "idents": 1.5,
+    "headers_auth_scopes": 1.5,
+    "errors_codes": 1.5,
+    "imports": 1.5,
+    "functions": 1.5,
+    "classes": 1.5,
+    "variables": 1.5,
+    "feature_flags": 1.5,
+    "secrets": 1.5,
+    "permissions": 1.5,
+    "roles": 1.5,
+    "config_keys": 1.5,
+    "dtos": 1.5,
+    "entities": 1.5,
+    "domain_objects": 1.5,
+    "io": 1.5,
+    "tags": 0.75,
+    "key_points": 0.75,
+    "security_flags": 1.5,
+    "todos": 0.75,
 }
 
 ES = Elasticsearch(ES_URL, request_timeout=30, max_retries=3, retry_on_timeout=True)
@@ -78,6 +77,14 @@ class HybridESRetriever(BaseRetriever):
                 "fields": ["text^1.0", "text.ru^1.3", "text.en^1.2"],
             }
         }]
+        query_terms = [t.lower() for t in query_bundle.query_str.split() if t.isalnum()]
+        if query_terms:
+            should_clauses.append({
+                "terms": {
+                    "bm25_boost_terms": query_terms,
+                    "boost": 1.5
+                }
+            })
         if self.signals:
             for field_name, values in self.signals.items():
                 if values and field_name in FIELD_WEIGHTS:
