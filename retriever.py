@@ -123,14 +123,7 @@ class HybridESRetriever(BaseRetriever):
         nodes = []
         for hit in response["hits"]["hits"]:
             source = hit["_source"]
-            metadata = {
-                "doc_id": source.get("path"),
-                "chunk_id": source.get("chunk_id"),
-                "chunk_count": source.get("chunks"),
-                "start_line": source.get("start_line"),
-                "end_line": source.get("end_line"),
-            }
-            node = TextNode(id_=hit["_id"], text=source["text"], metadata=metadata)
+            node = TextNode(id_=hit["_id"], text=source["text"], metadata=dict(source))
             nodes.append(NodeWithScore(node=node, score=float(hit["_score"])))
         return nodes
 
@@ -144,15 +137,22 @@ def retrieve_fusion_nodes(question: str, path_prefix: str, top_n: int, signals) 
     logger.info(f"⭐ Reranker отобрал {len(reranked)} чанков из {len(candidates)}")
     return [nws.node for nws in reranked]
 
-def main_search(question: str, path_prefix: str, top_n: int, signals) -> str:
+def main_search(question: str, path_prefix: str, top_n: int, signals, fields) -> str:
     nodes = retrieve_fusion_nodes(question, path_prefix, top_n, signals)
     results = []
     for node in nodes:
-        doc_id = node.metadata['doc_id']
-        chunk_info = f"[chunk {node.metadata['chunk_id']}/{node.metadata.get('chunk_count', node.metadata.get('chunk_total', '?'))}]"
+        doc_id = node.metadata['path']
+        chunk_info = f"[chunk {node.metadata['chunk_id']}/{node.metadata['chunks']}]"
         line_info = f"lines {node.metadata['start_line']}-{node.metadata['end_line']}"
         header = f"{doc_id} {chunk_info} {line_info}"
-        results.append(f"{header}:\n{node.text}")
+        result_text = f"{header}:\n{node.text}"
+        if fields:
+            for field in fields:
+                if field in node.metadata:
+                    value = node.metadata[field]
+                    if value:
+                        result_text += f"\n\n[{field}]: {value}"
+        results.append(result_text)
     return "\n\n".join(results)
 
 

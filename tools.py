@@ -5,7 +5,7 @@ from pathlib import Path
 logger = setup_logging(Path(__file__).stem)
 
 TOOLS_MAP = {
-    "main_search": lambda p: main_search(p["question"], p["path_prefix"], p["top_n"], p.get("signals")),
+    "main_search": lambda p: main_search(p["question"], p["path_prefix"], p["top_n"], p.get("signals"), p.get("fields")),
     "code_stats": lambda p: code_stats(p["path_prefix"]),
     "execute_command": lambda p: execute_command(p["command"]),
 }
@@ -25,7 +25,8 @@ MAIN_SEARCH_TOOL = {
             "question": {"type": "string"},
             "path_prefix": {"type": "string"},
             "top_n": {"type": "integer", "minimum": 1, "maximum": 30},
-            "signals": {"type": "object", "additionalProperties": {"type": "array", "items": {"type": "string"}}}
+            "signals": {"type": "object", "additionalProperties": {"type": "array", "items": {"type": "string"}}},
+            "fields": {"type": "array", "items": {"type": "string"}}
         },
         "required": ["question", "path_prefix", "top_n"]
     }
@@ -84,7 +85,7 @@ DESCRIBE_CORE_TOOL = {
     "input_schema": {
         "type": "object",
         "additionalProperties": False,
-        "required": ["name", "title", "description", "summary", "detailed", "language", "purpose", "file_type", "notes", "conclusions", "open_questions", "highlights", "has_documentation", "layer", "complexity", "confidence", "improvements", "bugs", "vulnerabilities"],
+        "required": ["name", "title", "description", "summary", "detailed", "language", "purpose", "file_type", "notes", "conclusions", "open_questions", "highlights", "has_documentation", "layer", "complexity", "confidence", "improvements", "bugs", "vulnerabilities", "bm25_boost_terms"],
         "properties": {
             "name":                {"type": "string", "maxLength": 32, "pattern": "^\\S+$"},
             "title":               {"type": "string", "maxLength": 128},
@@ -104,7 +105,8 @@ DESCRIBE_CORE_TOOL = {
             "confidence":          {"type": "number", "minimum": 0, "maximum": 1},
             "improvements":        {"type": "string", "maxLength": 512},
             "bugs":                {"type": "string", "maxLength": 512},
-            "vulnerabilities":     {"type": "string", "maxLength": 512}
+            "vulnerabilities":     {"type": "string", "maxLength": 512},
+            "bm25_boost_terms":    {"type": "array", "items": {"type": "string"}}
         }
     }
 }
@@ -139,7 +141,7 @@ DESCRIBE_SIGNALS_B_TOOL = {
     "input_schema": {
         "type": "object",
         "additionalProperties": False,
-        "required": ["feature_flags", "secrets", "permissions", "roles", "config_keys", "dtos", "entities", "domain_objects", "bm25_boost_terms", "io", "tags", "key_points", "security_flags", "todos"],
+        "required": ["feature_flags", "secrets", "permissions", "roles", "config_keys", "dtos", "entities", "domain_objects", "io", "tags", "key_points", "security_flags", "todos"],
         "properties": {
             "feature_flags":       {"type": "array", "items": {"type": "string"}},
             "secrets":             {"type": "array", "items": {"type": "string"}},
@@ -149,7 +151,6 @@ DESCRIBE_SIGNALS_B_TOOL = {
             "dtos":                {"type": "array", "items": {"type": "string"}},
             "entities":            {"type": "array", "items": {"type": "string"}},
             "domain_objects":      {"type": "array", "items": {"type": "string"}},
-            "bm25_boost_terms":    {"type": "array", "items": {"type": "string"}},
             "io":                  {"type": "array", "items": {"type": "string"}},
             "tags":                {"type": "array", "items": {"type": "string"}},
             "key_points":          {"type": "array", "items": {"type": "string"}},

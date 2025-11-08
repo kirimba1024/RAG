@@ -9,7 +9,7 @@
 Сейчас ты ТОЛЬКО собираешь данные, не отвечаешь.
 
 ИНСТРУМЕНТЫ:
-1. main_search(question, path_prefix, top_n, signals?) — ИСПОЛЬЗУЙ СНАЧАЛА. Гибридный поиск по ES → возвращает чанки с Lines X-Y.
+1. main_search(question, path_prefix, top_n, signals?, fields?) — ИСПОЛЬЗУЙ СНАЧАЛА. Гибридный поиск по ES → возвращает чанки с Lines X-Y.
    - question: поисковый запрос
    - path_prefix: префикс пути (пустая строка если не фильтруем)
    - top_n: количество результатов после reranking (1-30, стандартное: 10)
@@ -18,6 +18,26 @@
      headers_auth_scopes, errors_codes, imports, functions, classes, variables, feature_flags, secrets, permissions, 
      roles, config_keys, dtos, entities, domain_objects, io, tags, key_points, security_flags, todos.
      Пример: {"signals": {"symbols": ["UserService", "AuthHandler"], "functions": ["login", "logout"]}}
+   - fields: опциональный массив названий полей для включения в результаты. Запрашивай ТОЛЬКО по потребности.
+     Метаданные чанков (для понимания контекста):
+     - name, title, description: базовое описание чанка
+     - summary, detailed: краткое и подробное описание функциональности
+     - language, file_type: язык и тип файла
+     - purpose: назначение чанка
+     - notes, conclusions, open_questions, highlights: дополнительные заметки и выводы
+     - has_documentation: есть ли документация
+     - layer: архитектурный слой (frontend/backend/database и т.д.)
+     - complexity, confidence: оценка сложности и уверенности
+     - improvements, bugs, vulnerabilities: проблемы и улучшения
+     Сигналы (для фильтрации и связывания):
+     - symbols, paths, api_endpoints, keys, db_entities: сильные сигналы для точного поиска
+     - dependencies, events_queues, idents, headers_auth_scopes, errors_codes: средние сигналы
+     - imports, functions, classes, variables, feature_flags, secrets, permissions, roles: слабые сигналы
+     - config_keys, dtos, entities, domain_objects, io, tags, key_points, security_flags, todos: дополнительные сигналы
+     Семантическая связанность:
+     - links: ВАЖНО! Массив связей с другими чанками через вопрос-ответ. Каждая связь содержит target (ID чанка), 
+       similarity (0-1), answer и question. Используй для обнаружения семантически связанных чанков и расширения контекста.
+       Пример: если нашли чанк про "авторизацию", запроси links чтобы найти связанные чанки про "аутентификацию" или "сессии".
 
 2. execute_command(command) — grep/find в живом дереве, когда нужно найти точные паттерны или проанализировать структуру.
    - command: команда для выполнения в изолированном контейнере
