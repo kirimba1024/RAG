@@ -69,64 +69,27 @@ class HybridESRetriever(BaseRetriever):
 
     def _retrieve(self, query_bundle: QueryBundle) -> List[NodeWithScore]:
         query_embedding = Settings.embed_model.get_text_embedding(query_bundle.query_str)
-        filters = []
-        if self.path_prefix:
-            filters.append({"prefix": {"path": self.path_prefix}})
-        should_clauses = [{
-            "multi_match": {
-                "query": query_bundle.query_str,
-                "fields": ["text^1.0", "text.ru^1.3", "text.en^1.2"],
-            }
-        }]
+        base_filter = [{"range": {"chunk_id": {"gte": 1}}}]
+        filters = base_filter + ([{"prefix": {"path": self.path_prefix}}] if self.path_prefix else [])
+        should_clauses = [{"multi_match": {"query": query_bundle.query_str, "fields": ["text^1.0", "text.ru^1.3", "text.en^1.2"]}}]
         query_terms = [t.lower() for t in query_bundle.query_str.split() if t.isalnum()]
         if query_terms:
-            should_clauses.append({
-                "terms": {
-                    "bm25_boost_terms": query_terms,
-                    "boost": 1.5
-                }
-            })
+            should_clauses.append({"terms": {"bm25_boost_terms": query_terms, "boost": 1.5}})
         if self.signals:
             for field_name, values in self.signals.items():
                 if values and field_name in FIELD_WEIGHTS:
-                    should_clauses.append({
-                        "terms": {
-                            field_name: values,
-                            "boost": FIELD_WEIGHTS[field_name]
-                        }
-                    })
-        body = {
-            "size": self.top_k,
-            "knn": {
-                "field": "embedding",
-                "query_vector": query_embedding,
-                "k": self.top_k,
-                "num_candidates": self.top_k * 5,
-            },
-            "query": {
-                "bool": {
-                    "filter": [{"range": {"chunk_id": {"gte": 1}}}],
-                    "should": should_clauses
-                }
-            }
-        }
+                    should_clauses.append({"terms": {field_name: values, "boost": FIELD_WEIGHTS[field_name]}})
+        knn_config = {"field": "embedding", "query_vector": query_embedding, "k": self.top_k, "num_candidates": self.top_k * 5}
         if filters:
-            body["query"]["bool"]["filter"] = [{"range": {"chunk_id": {"gte": 1}}}] + filters
-            knn_filter = {"bool": {"must": [{"range": {"chunk_id": {"gte": 1}}}] + filters}}
-            body["knn"]["filter"] = knn_filter
+            knn_config["filter"] = {"bool": {"must": filters}}
         response = self.es.search(
             index=self.index,
-            knn=body["knn"],
-            query=body["query"],
-            size=body["size"],
+            knn=knn_config,
+            query={"bool": {"filter": filters, "should": should_clauses}},
+            size=self.top_k,
             request_timeout=30
         )
-        nodes = []
-        for hit in response["hits"]["hits"]:
-            source = hit["_source"]
-            node = TextNode(id_=hit["_id"], text=source["text"], metadata=dict(source))
-            nodes.append(NodeWithScore(node=node, score=float(hit["_score"])))
-        return nodes
+        return [NodeWithScore(node=TextNode(id_=hit["_id"], text=hit["_source"]["text"], metadata=dict(hit["_source"])), score=float(hit["_score"])) for hit in response["hits"]["hits"]]
 
 def retrieve_fusion_nodes(question: str, path_prefix: str, top_n: int, signals) -> List[BaseNode]:
     retriever = HybridESRetriever(es=ES, index=ES_INDEX_CHUNKS, path_prefix=path_prefix, top_k=top_n * 3, signals=signals)
@@ -142,26 +105,24 @@ def main_search(question: str, path_prefix: str, top_n: int, signals, fields, sh
     nodes = retrieve_fusion_nodes(question, path_prefix, top_n, signals)
     results = []
     for node in nodes:
-        chunk_id = node.id_
-        line_info = f"L:{node.metadata['start_line']}-{node.metadata['end_line']}/{node.metadata['file_lines']}"
-        kind_info = f"kind:{node.metadata['kind']}"
-        lang_info = f"lang:{node.metadata['lang']}"
-        mime_info = f"mime:{node.metadata['mime']}"
-        size_info = f"size:{node.metadata['size'] / 1024 / 1024:.2f}/{node.metadata['file_size'] / 1024 / 1024:.2f}mb"
-        header = f"{chunk_id} {line_info} {kind_info} {lang_info} {mime_info} {size_info}"
+        meta = node.metadata
+        header_parts = [
+            node.id_,
+            f"L:{meta['start_line']}-{meta['end_line']}/{meta['file_lines']}",
+            f"kind:{meta['kind']}",
+            f"lang:{meta['lang']}",
+            f"mime:{meta['mime']}",
+            f"size:{meta['size'] / 1048576:.2f}/{meta['file_size'] / 1048576:.2f}mb"
+        ]
         text = node.text
         if show_line_numbers:
-            lines = text.split('\n')
-            start_line = node.metadata['start_line']
-            numbered_lines = [f"{start_line + i:4d} | {line}" for i, line in enumerate(lines)]
-            text = '\n'.join(numbered_lines)
-        result_text = f"{header}:\n{text}"
+            start_line = meta['start_line']
+            text = '\n'.join(f"{start_line + i:4d} | {line}" for i, line in enumerate(text.split('\n')))
+        result_text = f"{' '.join(header_parts)}:\n{text}"
         if fields:
             for field in fields:
-                if field in node.metadata:
-                    value = node.metadata[field]
-                    if value:
-                        result_text += f"\n\n[{field}]: {value}"
+                if field in meta and meta[field]:
+                    result_text += f"\n\n[{field}]: {meta[field]}"
         results.append(result_text)
     return "\n\n".join(results)
 

@@ -44,27 +44,31 @@ def main():
         qa1 = chunk_qa[chunk_id1]
         for chunk_id2 in chunk_ids[i+1:]:
             qa2 = chunk_qa[chunk_id2]
-            sim1 = max([(np.dot(qa_embeddings[ans], qa_embeddings[q]), ans, q) for ans in qa1["answers"] for q in qa2["questions"] if ans in qa_embeddings and q in qa_embeddings], default=(0.0, "", ""))
-            sim2 = max([(np.dot(qa_embeddings[ans], qa_embeddings[q]), ans, q) for ans in qa2["answers"] for q in qa1["questions"] if ans in qa_embeddings and q in qa_embeddings], default=(0.0, "", ""))
-            sim, ans, q = max(sim1, sim2)
-            if sim >= QA_SIMILARITY_THRESHOLD:
-                graph[chunk_id1].append({"target": chunk_id2, "similarity": sim, "answer": ans, "question": q})
-                graph[chunk_id2].append({"target": chunk_id1, "similarity": sim, "answer": ans, "question": q})
+            similarities = []
+            for ans in qa1["answers"]:
+                if ans not in qa_embeddings:
+                    continue
+                for q in qa2["questions"]:
+                    if q in qa_embeddings:
+                        similarities.append((np.dot(qa_embeddings[ans], qa_embeddings[q]), ans, q))
+            for ans in qa2["answers"]:
+                if ans not in qa_embeddings:
+                    continue
+                for q in qa1["questions"]:
+                    if q in qa_embeddings:
+                        similarities.append((np.dot(qa_embeddings[ans], qa_embeddings[q]), ans, q))
+            if similarities:
+                sim, ans, q = max(similarities)
+                if sim >= QA_SIMILARITY_THRESHOLD:
+                    link_data = {"target": chunk_id2, "similarity": sim, "answer": ans, "question": q}
+                    graph[chunk_id1].append(link_data)
+                    graph[chunk_id2].append({"target": chunk_id1, "similarity": sim, "answer": ans, "question": q})
         if (i + 1) % 100 == 0:
             logger.debug(f"Обработано {i + 1}/{len(chunk_ids)} чанков")
-    filtered = {}
-    for chunk_id, links in graph.items():
-        filtered[chunk_id] = sorted(links, key=lambda x: x["similarity"], reverse=True)[:MAX_LINKS_PER_CHUNK]
+    filtered = {chunk_id: sorted(links, key=lambda x: x["similarity"], reverse=True)[:MAX_LINKS_PER_CHUNK] for chunk_id, links in graph.items()}
     total_edges = sum(len(links) for links in filtered.values()) // 2
     logger.info(f"Граф построен: {len(filtered)} узлов, {total_edges} рёбер")
-    actions = []
-    for chunk_id in chunk_ids:
-        actions.append({
-            "_op_type": "update",
-            "_index": ES_INDEX_CHUNKS,
-            "_id": chunk_id,
-            "doc": {"links": filtered.get(chunk_id, [])}
-        })
+    actions = [{"_op_type": "update", "_index": ES_INDEX_CHUNKS, "_id": chunk_id, "doc": {"links": filtered.get(chunk_id, [])}} for chunk_id in chunk_ids]
     if actions:
         bulk(ES, actions, chunk_size=1000, request_timeout=120)
         logger.info(f"Обновлено {len(actions)} чанков с полем links")

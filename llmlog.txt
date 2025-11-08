@@ -220,3 +220,9 @@
 - Кириллическая буква в имени константы: заменено DESCRIBE_SIGNALS_С_TOOL → DESCRIBE_SIGNALS_C_TOOL (латинская C) в tools.py и build.py.
 - path_prefix обязательный в CODE_STATS_TOOL: убран required из схемы, так как параметр опциональный и трактуется как "".
 - KeyError в tools.py при вызове code_stats: исправлено p["path_prefix"] → p.get("path_prefix", "").
+
+=== Упрощение кода (2025-01-XX) ===
+- retriever.py: упрощён _retrieve - убрано дублирование фильтров, упрощено формирование ES-запроса, фильтр для knn теперь применяется всегда когда есть filters (исправлена ошибка когда при отсутствии path_prefix фильтр chunk_id >= 1 не применялся к knn).
+- retriever.py: упрощён main_search - формирование header через список header_parts, использование 1048576 вместо 1024 * 1024, упрощена проверка полей.
+- graph_processor.py: разбиты сложные list comprehensions на явные циклы для читаемости, использованы dict/list comprehensions где уместно для filtered и actions.
+- build.py: упрощено формирование chunks - убраны промежуточные переменные (chunk_size, embedding), встроены вычисления напрямую в словарь chunk.

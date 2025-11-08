@@ -70,11 +70,10 @@ def index_es_file(rel_path, new_hash):
     logger.info(f"Разбито на {len(blocks)} блоков (+whole): {rel_path}")
     blocks = [{"start_line": 1, "end_line": lines, "title": "whole", "kind": "whole"}] + blocks
     total = len(blocks)
-    chunks = []
     lines_list = file_text.split('\n')
+    chunks = []
     for i, block_def in enumerate(blocks, start=0):
-        start = block_def["start_line"]
-        end = block_def["end_line"]
+        start, end = block_def["start_line"], block_def["end_line"]
         block_text = '\n'.join(lines_list[start-1:end])
         meta = {}
         for system_prompt, tool in DESCRIBE_TOOLS.values():
@@ -83,16 +82,12 @@ def index_es_file(rel_path, new_hash):
                 max_tokens=4096,
                 temperature=0,
                 system=[{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}],
-                messages=[{"role": "user", "content": [
-                    {"type": "text", "text": block_text, "cache_control": {"type": "ephemeral"}}
-                ]}],
+                messages=[{"role": "user", "content": [{"type": "text", "text": block_text, "cache_control": {"type": "ephemeral"}}]}],
                 tools=[tool],
                 tool_choice={"type": "tool", "name": tool["name"]},
                 extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"}
             )
             meta.update(step_response.content[0].input)
-        embedding = EMBEDDING.get_text_embedding(block_text)
-        chunk_size = len(block_text.encode('utf-8'))
         chunks.append({
             "_op_type": "index",
             "_index": ES_INDEX_CHUNKS,
@@ -100,7 +95,7 @@ def index_es_file(rel_path, new_hash):
             "path": rel_path,
             "hash": new_hash,
             "text": block_text,
-            "embedding": embedding,
+            "embedding": EMBEDDING.get_text_embedding(block_text),
             "chunk_id": i,
             "chunks": total,
             "start_line": start,
@@ -108,7 +103,7 @@ def index_es_file(rel_path, new_hash):
             "kind": block_def["kind"],
             "lang": lang,
             "file_size": file_size,
-            "size": chunk_size,
+            "size": len(block_text.encode('utf-8')),
             "file_lines": lines,
             "extension": file_extension,
             "filename": file_name,
