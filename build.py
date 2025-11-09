@@ -13,7 +13,7 @@ from utils import (
     EMBED_MODEL, REPOS_SAFE_ROOT, git_blob_oid, setup_logging, is_ignored, to_posix,
     CLAUDE_MODEL, ANTHROPIC_API_KEY, LANG_BY_EXT, load_prompt
 )
-from tools import SPLIT_BLOCKS_TOOL, DESCRIBE_CORE_TOOL, DESCRIBE_SIGNALS_A_TOOL, DESCRIBE_SIGNALS_B_TOOL, DESCRIBE_SIGNALS_C_TOOL
+from tools import SPLIT_BLOCKS_TOOL
 
 logger = setup_logging(Path(__file__).stem)
 
@@ -23,13 +23,6 @@ CLAUDE = Anthropic(api_key=ANTHROPIC_API_KEY)
 EMBEDDING = HuggingFaceEmbedding(EMBED_MODEL, normalize=True)
 
 SPLIT_SYSTEM = load_prompt("prompts/split_blocks.txt")
-
-DESCRIBE_TOOLS = {
-    DESCRIBE_CORE_TOOL["name"]: [load_prompt("prompts/describe_core.txt").format(tool_name=DESCRIBE_CORE_TOOL["name"]), DESCRIBE_CORE_TOOL],
-    DESCRIBE_SIGNALS_A_TOOL["name"]: [load_prompt("prompts/signals_A.txt").format(tool_name=DESCRIBE_SIGNALS_A_TOOL["name"]), DESCRIBE_SIGNALS_A_TOOL],
-    DESCRIBE_SIGNALS_B_TOOL["name"]: [load_prompt("prompts/signals_B.txt").format(tool_name=DESCRIBE_SIGNALS_B_TOOL["name"]), DESCRIBE_SIGNALS_B_TOOL],
-    DESCRIBE_SIGNALS_C_TOOL["name"]: [load_prompt("prompts/signals_C.txt").format(tool_name=DESCRIBE_SIGNALS_C_TOOL["name"]), DESCRIBE_SIGNALS_C_TOOL],
-}
 
 def delete_es_chunks(rel_path):
     query = {"term": {"path": rel_path}}
@@ -68,26 +61,13 @@ def index_es_file(rel_path, new_hash):
     blocks = response.content[0].input["blocks"]
     lines = file_text.count('\n') + 1
     logger.info(f"Разбито на {len(blocks)} блоков (+whole): {rel_path}")
-    blocks = [{"start_line": 1, "end_line": lines, "title": "whole", "kind": "whole"}] + blocks
+    blocks = [{"start_line": 1, "end_line": lines, "title": "whole", "kind": "whole", "bm25_boost_terms": [], "symbols": [], "graph_questions": [], "graph_answers": []}] + blocks
     total = len(blocks)
     lines_list = file_text.split('\n')
     chunks = []
     for i, block_def in enumerate(blocks, start=0):
         start, end = block_def["start_line"], block_def["end_line"]
         block_text = '\n'.join(lines_list[start-1:end])
-        meta = {}
-        for system_prompt, tool in DESCRIBE_TOOLS.values():
-            step_response = CLAUDE.messages.create(
-                model=CLAUDE_MODEL,
-                max_tokens=4096,
-                temperature=0,
-                system=[{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}],
-                messages=[{"role": "user", "content": [{"type": "text", "text": block_text, "cache_control": {"type": "ephemeral"}}]}],
-                tools=[tool],
-                tool_choice={"type": "tool", "name": tool["name"]},
-                extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"}
-            )
-            meta.update(step_response.content[0].input)
         chunks.append({
             "_op_type": "index",
             "_index": ES_INDEX_CHUNKS,
@@ -111,7 +91,10 @@ def index_es_file(rel_path, new_hash):
             "created_at": now_iso,
             "llm_version": CLAUDE_MODEL,
             "updated_at": now_iso,
-            **meta,
+            "bm25_boost_terms": block_def["bm25_boost_terms"],
+            "symbols": block_def["symbols"],
+            "graph_questions": block_def["graph_questions"],
+            "graph_answers": block_def["graph_answers"],
         })
     logger.info(f"Проанализировано {len(chunks)} чанков для {rel_path}")
     helpers.bulk(ES.options(request_timeout=120), chunks, chunk_size=2000, raise_on_error=True)

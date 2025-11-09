@@ -5,8 +5,7 @@ from pathlib import Path
 from anthropic import Anthropic
 
 from utils import CLAUDE_MODEL, ANTHROPIC_API_KEY, load_prompt, setup_logging
-from tools import MAIN_SEARCH_TOOL, CODE_STATS_TOOL, EXECUTE_COMMAND_TOOL, execute_tool
-from retriever import code_stats
+from tools import MAIN_SEARCH_TOOL, EXECUTE_COMMAND_TOOL, execute_tool
 
 logger = setup_logging(Path(__file__).stem)
 
@@ -36,7 +35,7 @@ def chat(message, history, summary):
         model=CLAUDE_MODEL,
         system=system_navigation + system_gather + system_summary,
         messages=messages,
-        tools=[MAIN_SEARCH_TOOL, CODE_STATS_TOOL, EXECUTE_COMMAND_TOOL],
+        tools=[MAIN_SEARCH_TOOL, EXECUTE_COMMAND_TOOL],
         max_tokens=4096,
     ) as stream:
         for event in stream:
@@ -103,7 +102,7 @@ def chat(message, history, summary):
         model=CLAUDE_MODEL,
         system=system_navigation + system_answer + system_summary,
         messages=messages,
-        tools=[MAIN_SEARCH_TOOL, CODE_STATS_TOOL, EXECUTE_COMMAND_TOOL],
+        tools=[MAIN_SEARCH_TOOL, EXECUTE_COMMAND_TOOL],
         max_tokens=4096,
     ) as stream:
         for event in stream:
@@ -131,7 +130,6 @@ with gr.Blocks(title="RAG Assistant") as demo:
         msg = gr.Textbox(
             placeholder="Задайте вопрос...", show_label=False, container=False, scale=7
         )
-        stats_btn = gr.Button("📊 Статистика", variant="secondary", scale=1)
         submit = gr.Button("Отправить", variant="primary", scale=1)
         stop = gr.Button("⏹️ Прервать", variant="stop", scale=1)
         clear = gr.Button("Очистить", scale=1)
@@ -155,17 +153,6 @@ with gr.Blocks(title="RAG Assistant") as demo:
         chat,
         inputs=[msg, chatbot, summary_state],
         outputs=[chatbot, summary_state, msg],
-    )
-    def show_stats(history, summary):
-        result = code_stats("")
-        new_message = "📊 Статистика кодовой базы"
-        new_response = f"### 📊 Статистика кодовой базы\n\n```\n{result}\n```"
-        return history + [[new_message, new_response]], summary
-    
-    stats_btn.click(
-        show_stats,
-        inputs=[chatbot, summary_state],
-        outputs=[chatbot, summary_state],
     )
     stop.click(None, None, None, cancels=[submit_event, click_event])
     clear.click(lambda: ([], "", ""), outputs=[chatbot, summary_state, msg])
