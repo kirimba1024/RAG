@@ -78,23 +78,17 @@ def index_es_file(rel_path, new_hash):
             "embedding": EMBEDDING.get_text_embedding(block_text),
             "chunk_id": i,
             "chunks": total,
-            "start_line": start,
-            "end_line": end,
-            "kind": block_def["kind"],
-            "lang": lang,
             "file_size": file_size,
             "size": len(block_text.encode('utf-8')),
             "file_lines": lines,
             "extension": file_extension,
             "filename": file_name,
             "mime": file_mime,
+            "lang": lang,
             "created_at": now_iso,
-            "llm_version": CLAUDE_MODEL,
             "updated_at": now_iso,
-            "bm25_boost_terms": block_def["bm25_boost_terms"],
-            "symbols": block_def["symbols"],
-            "graph_questions": block_def["graph_questions"],
-            "graph_answers": block_def["graph_answers"],
+            "llm_version": CLAUDE_MODEL,
+            **block_def
         })
     logger.info(f"Проанализировано {len(chunks)} чанков для {rel_path}")
     helpers.bulk(ES.options(request_timeout=120), chunks, chunk_size=2000, raise_on_error=True)

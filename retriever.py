@@ -76,7 +76,8 @@ def main_search(question: str, path_prefix: str, top_n: int, show_line_numbers, 
             f"kind:{meta['kind']}",
             f"lang:{meta['lang']}",
             f"mime:{meta['mime']}",
-            f"size:{meta['size'] / 1048576:.2f}/{meta['file_size'] / 1048576:.2f}mb"
+            f"size:{meta['size'] / 1048576:.2f}/{meta['file_size'] / 1048576:.2f}mb",
+            f"title:{meta['title']}"
         ]
         text = node.text
         if show_line_numbers:
