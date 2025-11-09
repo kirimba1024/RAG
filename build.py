@@ -22,7 +22,7 @@ CLAUDE = Anthropic(api_key=ANTHROPIC_API_KEY)
 
 EMBEDDING = HuggingFaceEmbedding(EMBED_MODEL, normalize=True)
 
-SPLIT_SYSTEM = load_prompt("prompts/split_blocks.txt")
+SPLIT_SYSTEM = load_prompt("prompts/system_split_blocks.txt")
 
 def delete_es_chunks(rel_path):
     query = {"term": {"path": rel_path}}

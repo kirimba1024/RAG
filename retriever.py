@@ -65,26 +65,15 @@ def retrieve_fusion_nodes(question: str, path_prefix: str, top_n: int) -> List[B
     logger.info(f"⭐ Reranker отобрал {len(reranked)} чанков из {len(candidates)}")
     return [nws.node for nws in reranked]
 
-def main_search(question: str, path_prefix: str, top_n: int, show_line_numbers, show_links) -> str:
+def main_search(question: str, path_prefix: str, top_n: int):
     nodes = retrieve_fusion_nodes(question, path_prefix, top_n)
+    whitelist = {"path", "start_line", "end_line", "file_lines", "kind", "lang", "mime", "title", "links"}
     results = []
     for node in nodes:
-        meta = node.metadata
-        header_parts = [
-            node.id_,
-            f"L:{meta['start_line']}-{meta['end_line']}/{meta['file_lines']}",
-            f"kind:{meta['kind']}",
-            f"lang:{meta['lang']}",
-            f"mime:{meta['mime']}",
-            f"size:{meta['size'] / 1048576:.2f}/{meta['file_size'] / 1048576:.2f}mb",
-            f"title:{meta['title']}"
-        ]
-        text = node.text
-        if show_line_numbers:
-            start_line = meta['start_line']
-            text = '\n'.join(f"{start_line + i:4d} | {line}" for i, line in enumerate(text.split('\n')))
-        result_text = f"{' '.join(header_parts)}:\n{text}"
-        if show_links and "links" in meta and meta["links"]:
-            result_text += f"\n\n[links]: {meta['links']}"
-        results.append(result_text)
-    return "\n\n".join(results)
+        chunk_data = {
+            "chunk_id": node.id_,
+            "text": node.text,
+            **{k: v for k, v in node.metadata.items() if k in whitelist}
+        }
+        results.append(chunk_data)
+    return results

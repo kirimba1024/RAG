@@ -155,11 +155,14 @@ def extract_binary_content(path: Path):
         return pytesseract.image_to_string(img, lang="rus+eng")
     return None
 
-def execute_command(command: str) -> str:
+def execute_command(command: str):
     client = docker.from_env()
     container = client.containers.get(SANDBOX_CONTAINER_NAME)
     result = container.exec_run(
         cmd=["timeout", "30", "sh", "-c", command],
         user="nobody"
     )
-    return result.output.decode('utf-8')
+    return {
+        "stdout": result.output.decode('utf-8'),
+        "exit_code": result.exit_code
+    }

@@ -1,6 +1,5 @@
 import gradio as gr
 import json
-import time
 from pathlib import Path
 from anthropic import Anthropic
 
@@ -11,107 +10,80 @@ logger = setup_logging(Path(__file__).stem)
 
 BASE_LLM = Anthropic(api_key=ANTHROPIC_API_KEY)
 
-NAVIGATION = load_prompt("prompts/chat_system_navigation.txt")
-CHAT_GATHER = load_prompt("prompts/chat_system_gather.txt")
-CHAT_ANSWER = load_prompt("prompts/chat_system_answer.txt")
+NAVIGATION = load_prompt("prompts/system_navigation.txt")
+SUMMARIZE = load_prompt("prompts/system_summarize.txt")
 CACHE_BLOCK = {"cache_control": {"type": "ephemeral"}}
 
 def system_block(text):
     return [{"type": "text", "text": text, **CACHE_BLOCK}]
 
-def chat(message, history, summary):
-    logger.info(f"💬 {message}...")
-    accumulated_text = ""
-    messages = [{"role": "user", "content": [{"type": "text", "text": message}]}]
-    logger.info(f"🔄 Этап 1: GATHER")
-    system_navigation = system_block(NAVIGATION)
-    system_gather = system_block(CHAT_GATHER)
-    system_answer = system_block(CHAT_ANSWER)
-    system_summary = system_block(summary)
-    assistant_content = []
-    current_text = ""
-    current_tool = None
-    with BASE_LLM.messages.stream(
+SYSTEM_NAVIGATION_BLOCK = system_block(NAVIGATION)
+SYSTEM_SUMMARIZE_BLOCK = system_block(SUMMARIZE)
+
+def summarize_context(messages):
+    response = BASE_LLM.messages.create(
         model=CLAUDE_MODEL,
-        system=system_navigation + system_gather + system_summary,
+        system=SYSTEM_SUMMARIZE_BLOCK,
         messages=messages,
-        tools=[MAIN_SEARCH_TOOL, EXECUTE_COMMAND_TOOL],
         max_tokens=4096,
-    ) as stream:
-        for event in stream:
-            if event.type == "content_block_start":
-                if event.content_block.type == "text":
-                    current_text = ""
-                elif event.content_block.type == "tool_use":
-                    current_tool = {
-                        "type": "tool_use",
-                        "id": event.content_block.id,
-                        "name": event.content_block.name,
-                        "input": "",
-                    }
-            elif event.type == "content_block_delta":
-                if event.delta.type == "text_delta":
-                    current_text += event.delta.text
-                    accumulated_text += event.delta.text
-                    yield history + [[message, accumulated_text]], summary, ""
-                elif event.delta.type == "input_json_delta":
-                    if current_tool:
-                        current_tool["input"] += event.delta.partial_json
-            elif event.type == "content_block_stop":
-                if current_text:
-                    assistant_content.append({"type": "text", "text": current_text})
-                    current_text = ""
-                if current_tool:
-                    current_tool["input"] = (
-                        json.loads(current_tool["input"])
-                        if current_tool["input"]
-                        else {}
-                    )
-                    assistant_content.append(current_tool)
-                    current_tool = None
-    tool_uses = [b for b in assistant_content if b.get("type") == "tool_use"]
-    if not tool_uses:
-        logger.error(f"⚠️ ОШИБКА: Этап 1 не вернул инструменты!")
-        yield history + [[message, accumulated_text]], summary, ""
-        return
-    logger.info(f"📋 Выполнение {len(tool_uses)} инструментов")
+    )
+    return "".join(block.text for block in response.content if block.type == "text")
+
+def to_api_messages(user_messages, responses, tool_results_list):
+    messages = [{"role": "user", "content": [{"type": "text", "text": msg}]} for msg in user_messages]
+    for i, response in enumerate(responses):
+        text_blocks = [block.text for block in response.content if block.type == "text"]
+        if text_blocks:
+            messages.append({"role": "assistant", "content": [{"type": "text", "text": "\n".join(text_blocks)}]})
+        if i < len(tool_results_list):
+            messages.append({"role": "user", "content": tool_results_list[i]})
+    return messages
+
+def create_tool_results(tool_uses):
     tool_results = []
     for tool_use in tool_uses:
-        t0 = time.perf_counter()
-        result = execute_tool(tool_use["name"], tool_use["input"])
-        accumulated_text += (
-            f"### 🔧 {tool_use['name']} ({(time.perf_counter() - t0):.2f}s)\n\n"
-            f"**Аргументы:**\n"
-            f"```json\n{json.dumps(tool_use['input'], ensure_ascii=False, indent=2)}\n```\n\n"
-            f"**Результат:**\n"
-            f"```\n{str(result)}\n```\n\n"
-        )
-        yield history + [[message, accumulated_text]], summary, ""
-        tool_results.append(
-            {
-                "type": "tool_result",
-                "tool_use_id": tool_use["id"],
-                "content": str(result),
-            }
-        )
-    messages.append({"role": "assistant", "content": assistant_content})
-    messages.append({"role": "user", "content": tool_results})
-    logger.info(f"🔄 Этап 2: ANSWER")
-    summary = ""
-    with BASE_LLM.messages.stream(
-        model=CLAUDE_MODEL,
-        system=system_navigation + system_answer + system_summary,
-        messages=messages,
-        tools=[MAIN_SEARCH_TOOL, EXECUTE_COMMAND_TOOL],
-        max_tokens=4096,
-    ) as stream:
-        for event in stream:
-            if event.type == "content_block_delta" and event.delta.type == "text_delta":
-                accumulated_text += event.delta.text
-                summary += event.delta.text
-                yield history + [[message, accumulated_text]], summary, ""
+        result = execute_tool(tool_use.name, tool_use.input)
+        media_type = "application/json" if isinstance(result, (list, dict)) else "text/plain"
+        data = json.dumps(result, ensure_ascii=False, separators=(",", ":")) if isinstance(result, (list, dict)) else str(result)
+        tool_results.append({
+            "type": "tool_result",
+            "tool_use_id": tool_use.id,
+            "content": [{
+                "type": "document",
+                "source": {
+                    "type": "text",
+                    "media_type": media_type,
+                    "data": data
+                }
+            }]
+        })
+    return tool_results
 
-    yield history + [[message, accumulated_text]], summary, ""
+def chat(message, history, summary):
+    logger.info(f"💬 {message}...")
+    history = history + [[message, ""]]
+    user_messages = [message]
+    if summary:
+        user_messages.insert(0, f"[Контекст из предыдущих сообщений]\n{summary}")
+    responses = []
+    tool_results_list = []
+    while True:
+        api_messages = to_api_messages(user_messages, responses, tool_results_list)
+        response = BASE_LLM.messages.create(
+            model=CLAUDE_MODEL,
+            system=SYSTEM_NAVIGATION_BLOCK,
+            messages=api_messages,
+            tools=[MAIN_SEARCH_TOOL, EXECUTE_COMMAND_TOOL],
+            max_tokens=4096,
+        )
+        responses.append(response)
+        tool_uses = [block for block in response.content if block.type == "tool_use"]
+        if not tool_uses:
+            break
+        tool_results_list.append(create_tool_results(tool_uses))
+    accumulated_text = "".join(block.text for response in responses for block in response.content if block.type == "text")
+    summary = accumulated_text
+    return history + [[message, accumulated_text]], summary, ""
 
 
 with gr.Blocks(title="RAG Assistant") as demo:
@@ -131,7 +103,6 @@ with gr.Blocks(title="RAG Assistant") as demo:
             placeholder="Задайте вопрос...", show_label=False, container=False, scale=7
         )
         submit = gr.Button("Отправить", variant="primary", scale=1)
-        stop = gr.Button("⏹️ Прервать", variant="stop", scale=1)
         clear = gr.Button("Очистить", scale=1)
 
     gr.Examples(
@@ -144,17 +115,8 @@ with gr.Blocks(title="RAG Assistant") as demo:
         label="💡 Примеры вопросов",
     )
 
-    submit_event = msg.submit(
-        chat,
-        inputs=[msg, chatbot, summary_state],
-        outputs=[chatbot, summary_state, msg],
-    )
-    click_event = submit.click(
-        chat,
-        inputs=[msg, chatbot, summary_state],
-        outputs=[chatbot, summary_state, msg],
-    )
-    stop.click(None, None, None, cancels=[submit_event, click_event])
+    msg.submit(chat, inputs=[msg, chatbot, summary_state], outputs=[chatbot, summary_state, msg])
+    submit.click(chat, inputs=[msg, chatbot, summary_state], outputs=[chatbot, summary_state, msg])
     clear.click(lambda: ([], "", ""), outputs=[chatbot, summary_state, msg])
 
 if __name__ == "__main__":

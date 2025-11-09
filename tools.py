@@ -5,7 +5,7 @@ from pathlib import Path
 logger = setup_logging(Path(__file__).stem)
 
 TOOLS_MAP = {
-    "main_search": lambda p: main_search(p["question"], p["path_prefix"], p["top_n"], p.get("show_line_numbers"), p.get("show_links")),
+    "main_search": lambda p: main_search(p["question"], p["path_prefix"], p["top_n"]),
     "execute_command": lambda p: execute_command(p["command"]),
 }
 
@@ -23,9 +23,7 @@ MAIN_SEARCH_TOOL = {
         "properties": {
             "question":           {"type": "string"},
             "path_prefix":        {"type": "string"},
-            "top_n":              {"type": "integer", "minimum": 1, "maximum": 30},
-            "show_line_numbers":  {"type": "boolean"},
-            "show_links":         {"type": "boolean"}
+            "top_n":              {"type": "integer", "minimum": 1, "maximum": 30}
         },
         "required": ["question", "path_prefix", "top_n"]
     }
