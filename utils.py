@@ -61,24 +61,23 @@ LANG_BY_EXT = {
     ".json": "json",
 }
 
-def setup_logging(name: str) -> logging.Logger:
-    log_dir = Path("logs")
-    log_dir.mkdir(exist_ok=True)
+def setup_logging(name: str, file: bool = True) -> logging.Logger:
     logger = logging.getLogger(name)
     if logger.handlers:
         return logger
     logger.setLevel(logging.INFO)
     fmt = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")
-    fh = logging.FileHandler(log_dir / f"{name}.log", encoding="utf-8")
-    fh.setFormatter(fmt)
-    logger.addHandler(fh)
+    if file:
+        log_dir = Path("logs")
+        log_dir.mkdir(exist_ok=True)
+        fh = logging.FileHandler(log_dir / f"{name}.log", encoding="utf-8")
+        fh.setFormatter(fmt)
+        logger.addHandler(fh)
     ch = logging.StreamHandler()
     ch.setFormatter(fmt)
     logger.addHandler(ch)
     logger.propagate = False
     return logger
-
-logger = setup_logging("utils")
 
 def message_for_log(text: str, max_size = 256) -> str:
     text = text.strip().replace("\n", " ").replace("\r", " ").replace("\t", " ")

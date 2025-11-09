@@ -1,10 +1,12 @@
 from pathlib import Path
 import re
 import shutil
-import subprocess
+import tempfile
+from detect_secrets import SecretsCollection
+from detect_secrets.settings import default_settings
 from utils import clean_text, extract_binary_content, setup_logging, REPOS_ROOT, REPOS_SAFE_ROOT, is_ignored, to_posix
 
-logger = setup_logging(Path(__file__).stem)
+logger = setup_logging(Path(__file__).stem, file=False)
 
 IGNORE_EXACT: tuple[str, ...] = (
     "SAMPLE_TOKEN_123456",
@@ -91,30 +93,20 @@ SECRET_PATTERNS = [
     *([(re.compile("|".join(map(re.escape, sorted(IGNORE_EXACT, key=len, reverse=True)))), "[REDACTED]")] if IGNORE_EXACT else []),
 ]
 
-EMOJI_MAP = [
-    (['private key', 'pem', 'pgp', 'certificate'], '🔐'),
-    (['password', 'passwd', 'pwd'], '🔑'),
-    (['token', 'bearer', 'jwt'], '🎫'),
-    (['api', 'key', 'secret'], '🗝️'),
-    (['jdbc', 'mongodb', 'postgres', 'mysql', 'redis'], '🗄️'),
-    (['aws', 'vault', 'keycloak'], '☁️'),
-]
-
-
-def get_emoji(pattern: str, replacement) -> str:
-    """Определяет эмодзи по типу замены."""
-    text = (replacement if isinstance(replacement, str) else '') + pattern.lower()
-    return next((emoji for keywords, emoji in EMOJI_MAP if any(k.lower() in text for k in keywords)), '🔒')
-
-def classify_secret_type(pattern: str) -> str:
-    pattern_lower = pattern.lower()
-    for keywords, emoji in EMOJI_MAP:
-        if any(k in pattern_lower for k in keywords):
-            return emoji
-    return '⚠️'
-
-def check_secrets_in_text(text: str) -> None:
-    pass
+def check_secrets_in_text(text: str, file_path: str = None) -> None:
+    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt", encoding="utf-8") as tmp:
+        tmp.write(text)
+        tmp_path = tmp.name
+    try:
+        secrets_collection = SecretsCollection()
+        with default_settings():
+            secrets_collection.scan_file(tmp_path)
+        results_dict = secrets_collection.json()
+        file_results = (results_dict.get("results") or {}).get(tmp_path, [])
+        for hit in file_results:
+            logger.warning(f"⚠️ {file_path} секрет: {hit.get('type', 'Unknown')} в строке {hit.get('line_number', 0)}")
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
 
 
 def mask_secrets(text: str) -> str:
@@ -137,7 +129,7 @@ def mask_directory(src_dir: Path, dst_dir: Path):
         try:
             content = item.read_text(encoding='utf-8')
             content = mask_secrets(content)
-            check_secrets_in_text(content)
+            check_secrets_in_text(content, rel_path)
             dst_path.write_text(content, encoding='utf-8')
             logger.debug(f"Маскирован: {rel_path}")
         except UnicodeDecodeError:
@@ -145,7 +137,7 @@ def mask_directory(src_dir: Path, dst_dir: Path):
                 content = extract_binary_content(item)
                 content = clean_text(content)
                 content = mask_secrets(content)
-                check_secrets_in_text(content)
+                check_secrets_in_text(content, rel_path)
                 dst_path.write_text(content, encoding='utf-8')
                 logger.debug(f"Бинарный файл распознан и маскирован: {rel_path}")
             except Exception as e:
@@ -160,9 +152,6 @@ def main():
         shutil.rmtree(REPOS_SAFE_ROOT)
     REPOS_SAFE_ROOT.mkdir()
     mask_directory(REPOS_ROOT, REPOS_SAFE_ROOT)
-    subprocess.run(['git', '-C', str(REPOS_SAFE_ROOT), 'init'], check=True)
-    subprocess.run(['git', '-C', str(REPOS_SAFE_ROOT), 'add', '.'], check=True)
-    subprocess.run(['git', '-C', str(REPOS_SAFE_ROOT), 'commit', '-m', 'Initial commit'], check=True)
     logger.info(f"Маскирование завершено: {REPOS_SAFE_ROOT}")
 
 if __name__ == "__main__":

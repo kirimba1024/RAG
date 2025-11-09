@@ -33,6 +33,7 @@ requests>=2.31.0
 
 pytesseract
 
+detect-secrets>=1.4.0
 
 gradio>=4.0
 
