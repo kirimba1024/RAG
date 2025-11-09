@@ -69,6 +69,3 @@ vector_store/
 
 # --- Environment ---
 !.env
-
-# --- Masked repos ---
-repos_safe/

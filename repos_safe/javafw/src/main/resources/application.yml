@@ -1,0 +1,12 @@
+spring:
+  application:
+    name: javafw
+  datasource:
+    url: jdbc:postgresql://localhost:5434/db0  # 🗺️ Адрес подключения к базе. Для продакшена замените на переменные окружения ($DB_URL)
+    username: user  # 🔑 Логин БД - никогда не храните в коде! Используйте Secrets Manager или ${DB_USERNAME}
+    password: [REDACTED]  # ⚠️ В продакшене использовать внешнее хранилище секретов
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    validate-on-migrate: true

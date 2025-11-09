@@ -1,0 +1,114 @@
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '3.5.6' // 🚀 Автоматическая конфигурация Spring Boot приложения
+	id 'io.spring.dependency-management' version '1.1.7' // 📦 Управление версиями зависимостей Spring
+}
+
+group = 'com.kirimba'
+version = '1.0.0'
+description = 'Micro Postgres' // 🏷️ Короткое и ясное описание проекта
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(21) // ☕ Используем LTS версию Java для стабильности и долгосрочной поддержки
+	}
+}
+
+configurations {
+	compileOnly {
+		extendsFrom annotationProcessor // 🔄 Аннотации процессоры наследуют от compileOnly конфигурации
+	}
+}
+
+repositories {
+	mavenCentral() // 📚 Основной репозиторий для загрузки зависимостей
+}
+
+dependencies {
+    // ==================== SPRING BOOT STARTERS ====================
+    implementation 'org.springframework.boot:spring-boot-starter-web'          // 🌐 Веб-приложение с REST API
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'     // 🗄️ Работа с базой данных через JPA
+    implementation 'org.springframework.boot:spring-boot-starter-validation'   // ✅ Валидация входных данных
+    implementation 'org.springframework.boot:spring-boot-starter-security'     // 🔐 Аутентификация и авторизация
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'     // 📊 Мониторинг и метрики приложения
+
+    // ==================== БЕЗОПАСНОСТЬ ====================
+    implementation 'org.springframework.security:spring-security-crypto'       // 🔒 Криптографические утилиты (хеширование паролей)
+
+    // ==================== БАЗА ДАННЫХ ====================
+    runtimeOnly 'org.postgresql:postgresql'                                   // 🐘 Драйвер PostgreSQL для подключения к базе
+
+    // ==================== ДОКУМЕНТАЦИЯ API ====================
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.13'  // 📖 Swagger UI для интерактивной документации API
+
+    // ==================== МОНИТОРИНГ И МЕТРИКИ ====================
+    implementation 'io.micrometer:micrometer-registry-prometheus'             // 📈 Экспорт метрик в формате Prometheus
+
+    implementation 'org.mapstruct:mapstruct:1.5.5.Final'
+    annotationProcessor 'org.mapstruct:mapstruct-processor:1.5.5.Final'
+    annotationProcessor 'org.projectlombok:lombok-mapstruct-binding:0.2.0'
+
+    // ==================== РАЗРАБОТКА ====================
+    compileOnly 'org.projectlombok:lombok'                                    // ⚡ Генерация boilerplate кода (геттеры, сеттеры и т.д.)
+    developmentOnly 'org.springframework.boot:spring-boot-devtools'           // 🔧 Горячая перезагрузка и улучшения для разработки
+    developmentOnly 'org.springframework.boot:spring-boot-docker-compose'     // 🐳 Интеграция с Docker Compose для разработки
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'  // 🛠 Генерация метаданных для кастомных свойств
+    annotationProcessor 'org.projectlombok:lombok'                            // 🔨 Обработка аннотаций Lombok
+
+    // ==================== ТЕСТИРОВАНИЕ ====================
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'    // 🧪 Интеграционное и модульное тестирование
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'              // 🚀 Запуск тестов через JUnit Platform
+}
+
+tasks.named('test') {
+	useJUnitPlatform() // ✅ Используем современный JUnit 5 для запуска тестов
+}
+
+// Включаем детальный вывод при тестировании
+test {
+    testLogging {
+        events = ["passed", "skipped", "failed"]  // Используем присваивание вместо передачи параметров
+        exceptionFormat = "full"  // Явное присваивание значения
+        showStandardStreams = true  // Показывать вывод в консоль (очень полезно для отладки)
+        showCauses = true  // Показывать причины ошибок
+        showStackTraces = true  // Показывать полные stack traces
+    }
+}
+
+// Сборка Uber-JAR (единого JAR со всеми зависимостями)
+bootJar {
+    archiveFileName = "${project.name}-${project.version}.jar"
+    layered {
+        enabled = true  // 🏗️ Слоистая сборка для оптимизации Docker образов
+    }
+}
+
+// Конфигурация для Java компиляции
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'  // 🔤 Кодировка исходных файлов 🌍 Гарантирует корректную обработку Unicode (кириллица, эмодзи, спецсимволы)
+    options.compilerArgs += ['-parameters']  // // 🏷️ Сохраняет имена параметров методов для Spring MVC, JPA, Jackson рефлексии
+    options.compilerArgs += ['-Xlint:unchecked', '-Xlint:deprecation']  // 🔍 Детальные предупреждения о generics и устаревшем API
+    options.compilerArgs += [
+            '-Xlint:rawtypes',      // ⚠️ Сырые типы (List вместо List<String>)
+            '-Xlint:divzero',       // 🚫 Деление на ноль
+            '-Xlint:empty',         // 🎯 Пустые блоки кода
+            '-Xlint:fallthrough',   // 🔀 Отсутствие break в switch
+            '-Xlint:finally',       // ⚡ Проблемы в finally-блоках
+            '-Xlint:overrides',     // 🔄 Некорректное переопределение методов
+    ]
+    options.compilerArgs += [
+            '-Amapstruct.defaultComponentModel=spring',
+            '-Amapstruct.unmappedTargetPolicy=IGNORE'
+    ]
+}
+
+// Генерация документации по проекту
+java {
+    withJavadocJar()  // 📄 Создание JAR с Javadoc
+    withSourcesJar()  // 📝 Создание JAR с исходным кодом
+}
+
+// Конфигурация для Spring Boot приложения
+springBoot {
+    buildInfo()  // ℹ️ Генерация META-INF/build-info.properties с информацией о сборке
+}

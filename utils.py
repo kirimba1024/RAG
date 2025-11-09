@@ -113,7 +113,7 @@ def file_hash(path, algo="sha256"):
 IGNORE_FILE = Path(".ignore")
 if not IGNORE_FILE.exists():
     raise FileNotFoundError(f"Файл .ignore не найден в {IGNORE_FILE.resolve()}")
-IGNORE_SPEC = PathSpec.from_lines("gitwildmatch", IGNORE_FILE.read_text(encoding="utf-8").splitlines())
+IGNORE_SPEC = PathSpec.from_lines("gitwildmatch", [stripped for line in IGNORE_FILE.read_text(encoding="utf-8").splitlines() if (stripped := line.partition("#")[0].strip())])
 
 def is_ignored(rel_path: str) -> bool:
     return IGNORE_SPEC.match_file(rel_path)

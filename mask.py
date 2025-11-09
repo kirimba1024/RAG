@@ -142,10 +142,8 @@ def mask_directory(src_dir: Path, dst_dir: Path):
                 logger.debug(f"Бинарный файл распознан и маскирован: {rel_path}")
             except Exception as e:
                 logger.error(f"Ошибка при обработке бинарного файла {rel_path}: {e}")
-                shutil.copy2(item, dst_path)
         except Exception as e:
             logger.error(f"Ошибка при обработке файла {rel_path}: {e}")
-            shutil.copy2(item, dst_path)
 
 def main():
     if REPOS_SAFE_ROOT.exists():
