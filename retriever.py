@@ -26,7 +26,6 @@ RERANKER = SentenceTransformerRerank(model=RERANK_MODEL, top_n=10, device=DEVICE
 def normal_prefix(id_prefix):
     return (id_prefix or "").lstrip("/").lstrip(".")
 
-
 class HybridESRetriever(BaseRetriever):
     def __init__(self, es, index, path_prefix: str, top_k: int):
         super().__init__()
@@ -35,7 +34,7 @@ class HybridESRetriever(BaseRetriever):
         self.top_k = top_k
         self.path_prefix = normal_prefix(path_prefix)
 
-    def _retrieve(self, query_bundle: QueryBundle) -> List[NodeWithScore]:
+    def _retrieve(self, query_bundle: QueryBundle, symbols) -> List[NodeWithScore]:
         query_embedding = Settings.embed_model.get_text_embedding(query_bundle.query_str)
         base_filter = [{"range": {"chunk_id": {"gte": 1}}}]
         filters = base_filter + ([{"prefix": {"path": self.path_prefix}}] if self.path_prefix else [])
@@ -43,6 +42,10 @@ class HybridESRetriever(BaseRetriever):
         query_terms = [t.lower() for t in query_bundle.query_str.split() if t.isalnum()]
         if query_terms:
             should_clauses.append({"terms": {"bm25_boost_terms": query_terms, "boost": 1.5}})
+            should_clauses.append({"terms": {"symbols": query_terms, "boost": 2.0}})
+        if symbols:
+            symbol_terms = [s.lower() for s in symbols if s]
+            should_clauses.append({"terms": {"symbols": symbol_terms, "boost": 2.5}})
         knn_config = {"field": "embedding", "query_vector": query_embedding, "k": self.top_k, "num_candidates": self.top_k * 5}
         if filters:
             knn_config["filter"] = {"bool": {"must": filters}}
@@ -55,25 +58,36 @@ class HybridESRetriever(BaseRetriever):
         )
         return [NodeWithScore(node=TextNode(id_=hit["_id"], text=hit["_source"]["text"], metadata=dict(hit["_source"])), score=float(hit["_score"])) for hit in response["hits"]["hits"]]
 
-def retrieve_fusion_nodes(question: str, path_prefix: str, top_n: int) -> List[BaseNode]:
-    retriever = HybridESRetriever(es=ES, index=ES_INDEX_CHUNKS, path_prefix=path_prefix, top_k=top_n * 3)
-    candidates = retriever.retrieve(question)
-    logger.info(f"🔍 Retriever вернул {len(candidates)} чанков (query: '{question[:50]}...')")
+def retrieve_fusion_nodes(question: str, path_prefix: str, top_n: int, symbols, use_reranker) -> List[BaseNode]:
+    top_k = top_n * 3 if use_reranker else top_n
+    retriever = HybridESRetriever(es=ES, index=ES_INDEX_CHUNKS, path_prefix=path_prefix, top_k=top_k)
     qb = QueryBundle(query_str=question)
-    RERANKER.top_n = top_n
-    reranked = RERANKER.postprocess_nodes(candidates, query_bundle=qb)
-    logger.info(f"⭐ Reranker отобрал {len(reranked)} чанков из {len(candidates)}")
-    return [nws.node for nws in reranked]
+    candidates = retriever._retrieve(qb, symbols)
+    logger.info(f"🔍 Retriever вернул {len(candidates)} чанков (query: '{question[:50]}...')")
+    if use_reranker:
+        RERANKER.top_n = top_n
+        reranked = RERANKER.postprocess_nodes(candidates, query_bundle=qb)
+        logger.info(f"⭐ Reranker отобрал {len(reranked)} чанков из {len(candidates)}")
+        return [nws.node for nws in reranked]
+    return [nws.node for nws in candidates[:top_n]]
 
-def main_search(question: str, path_prefix: str, top_n: int):
-    nodes = retrieve_fusion_nodes(question, path_prefix, top_n)
-    whitelist = {"path", "start_line", "end_line", "file_lines", "kind", "lang", "mime", "title", "links"}
-    results = []
-    for node in nodes:
-        chunk_data = {
-            "chunk_id": node.id_,
-            "text": node.text,
-            **{k: v for k, v in node.metadata.items() if k in whitelist}
-        }
-        results.append(chunk_data)
-    return results
+def format_chunk_data(chunk_id, metadata):
+    whitelist = {"text", "path", "start_line", "end_line", "file_lines", "kind", "lang", "mime", "title", "links"}
+    return {
+        "chunk_id": chunk_id,
+        **{k: v for k, v in metadata.items() if k in whitelist}
+    }
+
+def get_chunks(chunk_ids):
+    if not chunk_ids:
+        return []
+    response = ES.mget(
+        index=ES_INDEX_CHUNKS,
+        body={"ids": chunk_ids},
+        request_timeout=30
+    )
+    return [format_chunk_data(doc["_id"], doc["_source"]) for doc in response["docs"] if doc["found"]]
+
+def main_search(question: str, path_prefix: str, top_n: int, symbols, use_reranker):
+    nodes = retrieve_fusion_nodes(question, path_prefix, top_n, symbols, use_reranker)
+    return [format_chunk_data(node.id_, node.metadata) for node in nodes]
