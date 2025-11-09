@@ -20,6 +20,19 @@ def system_block(text):
 SYSTEM_NAVIGATION_BLOCK = system_block(NAVIGATION)
 SYSTEM_SUMMARIZE_BLOCK = system_block(SUMMARIZE)
 
+RAW_THRESHOLD = 8000
+
+def extract_messages_from_history(user_msg, responses, tool_results_list):
+    messages = []
+    messages.append({"role": "user", "content": [{"type": "text", "text": user_msg}]})
+    for i, response in enumerate(responses):
+        text_blocks = [block.text for block in response.content if block.type == "text"]
+        if text_blocks:
+            messages.append({"role": "assistant", "content": [{"type": "text", "text": "\n".join(text_blocks)}]})
+        if i < len(tool_results_list):
+            messages.append({"role": "user", "content": tool_results_list[i]})
+    return messages
+
 def summarize_context(messages):
     response = BASE_LLM.messages.create(
         model=CLAUDE_MODEL,
@@ -29,15 +42,52 @@ def summarize_context(messages):
     )
     return "".join(block.text for block in response.content if block.type == "text")
 
-def to_api_messages(user_messages, responses, tool_results_list):
-    messages = [{"role": "user", "content": [{"type": "text", "text": msg}]} for msg in user_messages]
-    for i, response in enumerate(responses):
+def to_api_messages(history_cache, current_user_msg, current_responses, current_tool_results_list):
+    messages = []
+    if history_cache["summary"]:
+        messages.append({"role": "user", "content": [{"type": "text", "text": f"[Контекст из предыдущих сообщений]\n{history_cache['summary']}"}]})
+    for batch in history_cache["batches"]:
+        messages.extend(batch)
+    messages.extend(history_cache["raw"])
+    messages.append({"role": "user", "content": [{"type": "text", "text": current_user_msg}]})
+    for i, response in enumerate(current_responses):
         text_blocks = [block.text for block in response.content if block.type == "text"]
         if text_blocks:
             messages.append({"role": "assistant", "content": [{"type": "text", "text": "\n".join(text_blocks)}]})
-        if i < len(tool_results_list):
-            messages.append({"role": "user", "content": tool_results_list[i]})
+        if i < len(current_tool_results_list):
+            messages.append({"role": "user", "content": current_tool_results_list[i]})
     return messages
+
+def update_history_cache(history_cache, user_msg, responses, tool_results_list):
+    new_messages = extract_messages_from_history(user_msg, responses, tool_results_list)
+    raw_size = sum(len(str(msg)) for msg in history_cache["raw"]) + sum(len(str(msg)) for msg in new_messages)
+    if raw_size > RAW_THRESHOLD:
+        all_messages = []
+        if history_cache["summary"]:
+            all_messages.append({"role": "user", "content": [{"type": "text", "text": f"[Контекст из предыдущих сообщений]\n{history_cache['summary']}"}]})
+        for batch in history_cache["batches"]:
+            all_messages.extend(batch)
+        all_messages.extend(history_cache["raw"])
+        all_messages.extend(new_messages)
+        history_cache["summary"] = summarize_context(all_messages)
+        history_cache["batches"] = [new_messages]
+        history_cache["raw"] = []
+    else:
+        history_cache["raw"].extend(new_messages)
+        if len(history_cache["batches"]) < 2:
+            history_cache["batches"].append(history_cache["raw"].copy())
+            history_cache["raw"] = []
+        elif len(history_cache["batches"]) == 2:
+            all_messages = []
+            if history_cache["summary"]:
+                all_messages.append({"role": "user", "content": [{"type": "text", "text": f"[Контекст из предыдущих сообщений]\n{history_cache['summary']}"}]})
+            for batch in history_cache["batches"]:
+                all_messages.extend(batch)
+            all_messages.extend(history_cache["raw"])
+            history_cache["summary"] = summarize_context(all_messages)
+            history_cache["batches"] = [history_cache["raw"].copy()]
+            history_cache["raw"] = []
+    return history_cache
 
 def create_tool_results(tool_uses):
     tool_results = []
@@ -59,16 +109,15 @@ def create_tool_results(tool_uses):
         })
     return tool_results
 
-def chat(message, history, summary):
+def chat(message, history, history_cache_state):
     logger.info(f"💬 {message}...")
     history = history + [[message, ""]]
-    user_messages = [message]
-    if summary:
-        user_messages.insert(0, f"[Контекст из предыдущих сообщений]\n{summary}")
+    if history_cache_state is None:
+        history_cache_state = {"summary": "", "batches": [], "raw": []}
     responses = []
     tool_results_list = []
     while True:
-        api_messages = to_api_messages(user_messages, responses, tool_results_list)
+        api_messages = to_api_messages(history_cache_state, message, responses, tool_results_list)
         response = BASE_LLM.messages.create(
             model=CLAUDE_MODEL,
             system=SYSTEM_NAVIGATION_BLOCK,
@@ -82,13 +131,13 @@ def chat(message, history, summary):
             break
         tool_results_list.append(create_tool_results(tool_uses))
     accumulated_text = "".join(block.text for response in responses for block in response.content if block.type == "text")
-    summary = accumulated_text
-    return history + [[message, accumulated_text]], summary, ""
+    history_cache_state = update_history_cache(history_cache_state, message, responses, tool_results_list)
+    return history + [[message, accumulated_text]], history_cache_state, ""
 
 
 with gr.Blocks(title="RAG Assistant") as demo:
     gr.Markdown("# 🤖 RAG Assistant\n**Claude** с инструментами для навигации по коду")
-    summary_state = gr.State("")
+    history_cache_state = gr.State({"summary": "", "batches": [], "raw": []})
 
     chatbot = gr.Chatbot(
         height=600,
@@ -115,9 +164,9 @@ with gr.Blocks(title="RAG Assistant") as demo:
         label="💡 Примеры вопросов",
     )
 
-    msg.submit(chat, inputs=[msg, chatbot, summary_state], outputs=[chatbot, summary_state, msg])
-    submit.click(chat, inputs=[msg, chatbot, summary_state], outputs=[chatbot, summary_state, msg])
-    clear.click(lambda: ([], "", ""), outputs=[chatbot, summary_state, msg])
+    msg.submit(chat, inputs=[msg, chatbot, history_cache_state], outputs=[chatbot, history_cache_state, msg])
+    submit.click(chat, inputs=[msg, chatbot, history_cache_state], outputs=[chatbot, history_cache_state, msg])
+    clear.click(lambda: ([], {"summary": "", "batches": [], "raw": []}, ""), outputs=[chatbot, history_cache_state, msg])
 
 if __name__ == "__main__":
     demo.launch(server_name="0.0.0.0", server_port=7860, share=False)
