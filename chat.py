@@ -14,83 +14,124 @@ BASE_LLM = Anthropic(api_key=ANTHROPIC_API_KEY)
 
 NAVIGATION = load_prompt("prompts/system_navigation.txt")
 CACHE_BLOCK = {"cache_control": {"type": "ephemeral"}}
-
-def system_block(text):
-    return [{"type": "text", "text": text, **CACHE_BLOCK}]
-
-SYSTEM_NAVIGATION_BLOCK = system_block(NAVIGATION)
-
+TOOLS = [MAIN_SEARCH_TOOL, EXECUTE_COMMAND_TOOL, GET_CHUNKS_TOOL]
+MAX_TOOL_LOOPS = 8
 RAW_THRESHOLD = 3000
 
 def canon_json(obj):
     return json.dumps(obj, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+
+def make_nav_block(text):
+    return {
+        "type": "document",
+        "source": {"type": "text", "media_type": "application/json", "data": canon_json({"nav": text})},
+        **CACHE_BLOCK
+    }
+
+SYSTEM_NAVIGATION_BLOCK = [make_nav_block(NAVIGATION)]
+
+def make_cached_page_block(page_messages_json_str):
+    return {
+        "type": "document",
+        "source": {
+            "type": "text",
+            "media_type": "application/json",
+            "data": page_messages_json_str
+        },
+        **CACHE_BLOCK
+    }
 
 def chat(message, history, history_pages, raw):
     logger.info(f"💬 {message}...")
     history = history + [[message, ""]]
     history_pages = history_pages or []
     raw = raw or []
-    responses = []
-    tool_results_list = []
+    messages = [json.loads(msg) for msg in raw]
+    messages.append({"role": "user", "content": [{"type": "text", "text": message}]})
+    page_log = [{"role": "user", "content": [{"type": "text", "text": message}]}]
+    final_text_parts = []
+    loops = 0
+    had_any_text = False
+    tool_facts = []
     while True:
-        messages = [json.loads(msg) for msg in raw]
-        messages.append({"role": "user", "content": [{"type": "text", "text": message}]})
-        for i, response in enumerate(responses):
-            text_blocks = [block.text for block in response.content if block.type == "text"]
-            if text_blocks:
-                messages.append({"role": "assistant", "content": [{"type": "text", "text": "\n".join(text_blocks)}]})
-            if i < len(tool_results_list):
-                messages.append({"role": "user", "content": tool_results_list[i]})
+        loops += 1
+        if loops > MAX_TOOL_LOOPS:
+            logger.warning("Max tool loops reached")
+            break
         response = BASE_LLM.messages.create(
             model=CLAUDE_MODEL,
             system=SYSTEM_NAVIGATION_BLOCK + history_pages[-3:],
             messages=messages,
-            tools=[MAIN_SEARCH_TOOL, EXECUTE_COMMAND_TOOL, GET_CHUNKS_TOOL],
+            tools=TOOLS,
             max_tokens=4096,
         )
-        responses.append(response)
-        tool_uses = [block for block in response.content if block.type == "tool_use"]
+        text_chunks = [b.text for b in response.content if b.type == "text"]
+        if text_chunks:
+            had_any_text = True
+            text = "\n".join(text_chunks)
+            messages.append({"role": "assistant", "content": [{"type": "text", "text": text}]})
+            page_log.append({"role": "assistant", "content": [{"type": "text", "text": text}]})
+            final_text_parts.append(text)
+        tool_uses = [b for b in response.content if b.type == "tool_use"]
         if not tool_uses:
             break
-        tool_results = []
-        for tool_use in tool_uses:
-            if tool_use.name == "main_search":
-                result = main_search(tool_use.input["question"], tool_use.input["path_prefix"], tool_use.input["top_n"], tool_use.input.get("symbols"), tool_use.input.get("use_reranker", True))
-            elif tool_use.name == "execute_command":
-                result = execute_command(tool_use.input["command"])
-            elif tool_use.name == "get_chunks":
-                result = get_chunks(tool_use.input["chunk_ids"])
+        for tu in tool_uses:
+            if tu.name == "main_search":
+                tool_facts.append(f"search: {tu.input.get('question', '')}@{tu.input.get('path_prefix', '')} top={tu.input.get('top_n')}")
+            elif tu.name == "get_chunks":
+                tool_facts.append(f"get_chunks: {len(tu.input.get('chunk_ids', []))} ids")
+            elif tu.name == "execute_command":
+                tool_facts.append(f"exec: {tu.input.get('command', '')[:60]}")
+        messages.append({
+            "role": "assistant",
+            "content": [{"type": "tool_use", "id": tu.id, "name": tu.name, "input": tu.input} for tu in tool_uses]
+        })
+        page_log.append({
+            "role": "assistant",
+            "content": [{"type": "tool_use", "id": tu.id, "name": tu.name, "input": tu.input} for tu in tool_uses]
+        })
+        results = []
+        for tu in tool_uses:
+            if tu.name == "main_search":
+                r = main_search(tu.input["question"], tu.input["path_prefix"], tu.input["top_n"], tu.input.get("symbols"), tu.input.get("use_reranker", True))
+            elif tu.name == "execute_command":
+                r = execute_command(tu.input["command"])
+            elif tu.name == "get_chunks":
+                r = get_chunks(tu.input["chunk_ids"])
             else:
-                logger.exception("Unknown tool: %s", tool_use.name)
-                result = f"Ошибка: неизвестный инструмент {tool_use.name}"
-            media_type = "application/json" if isinstance(result, (list, dict)) else "text/plain"
-            data = json.dumps(result, ensure_ascii=False, separators=(",", ":")) if isinstance(result, (list, dict)) else str(result)
-            tool_results.append({
+                logger.exception("Unknown tool: %s", tu.name)
+                r = {"error": f"unknown tool {tu.name}"}
+            is_json = isinstance(r, (dict, list))
+            results.append({
                 "type": "tool_result",
-                "tool_use_id": tool_use.id,
+                "tool_use_id": tu.id,
                 "content": [{
                     "type": "document",
                     "source": {
                         "type": "text",
-                        "media_type": media_type,
-                        "data": data
+                        "media_type": "application/json" if is_json else "text/plain",
+                        "data": canon_json(r) if is_json else str(r),
                     }
                 }]
             })
-        tool_results_list.append(tool_results)
-    accumulated_text = "".join(block.text for response in responses for block in response.content if block.type == "text")
-    page_messages = [{"role": "user", "content": [{"type": "text", "text": message}]}]
-    for response in responses:
-        text_blocks = [block.text for block in response.content if block.type == "text"]
-        if text_blocks:
-            page_messages.append({"role": "assistant", "content": [{"type": "text", "text": "\n".join(text_blocks)}]})
-    new_page_block = {"type": "text", "text": canon_json(page_messages), **CACHE_BLOCK}
-    raw_size = sum(len(msg) for msg in raw) + len(new_page_block["text"])
+        messages.append({"role": "user", "content": results})
+        page_log.append({"role": "user", "content": results})
+    accumulated_text = "\n".join(final_text_parts).strip()
+    page_text_only = []
+    for m in page_log:
+        if any(c.get("type") == "text" for c in (m.get("content") or [])):
+            page_text_only.append(m)
+    if not had_any_text and tool_facts:
+        fact_line = " · ".join(tool_facts)[:500]
+        page_text_only.append({"role": "assistant", "content": [{"type": "text", "text": f"[facts] {fact_line}"}]})
+    page_json = canon_json(page_text_only)
+    new_page_block = make_cached_page_block(page_json)
+    raw_size = sum(len(s) for s in raw) + len(page_json)
     if raw_size > RAW_THRESHOLD:
         history_pages.append(new_page_block)
         raw = []
     else:
-        raw.extend([canon_json(msg) for msg in page_messages])
+        raw.extend([canon_json(m) for m in page_text_only])
     return history + [[message, accumulated_text]], history_pages, raw, ""
 
 
@@ -116,9 +157,9 @@ with gr.Blocks(title="RAG Assistant") as demo:
 
     gr.Examples(
         examples=[
-            "Как устроен граф знаний в этом проекте?",
+            "Как сущности есть в этом проекте?",
             "Объясни, как работает frontend?",
-            "Какие промпты используются в проекте?",
+            "Найди люьбую сущность из проекта, а потом все связанные с ней места кода.",
         ],
         inputs=msg,
         label="💡 Примеры вопросов",
