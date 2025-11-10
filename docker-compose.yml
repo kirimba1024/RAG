@@ -7,6 +7,7 @@ services:
       - xpack.security.enabled=false
       - ES_JAVA_OPTS=-Xms1g -Xmx1g
       - ES_INDEX_CHUNKS=${ES_INDEX_CHUNKS:-chunks}
+      - ES_INDEX_FILE_MANIFEST=${ES_INDEX_FILE_MANIFEST:-file_manifest}
     ports:
       - "${ES_PORT:-9200}:9200"
 

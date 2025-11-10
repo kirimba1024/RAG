@@ -36,8 +36,7 @@ class HybridESRetriever(BaseRetriever):
 
     def _retrieve(self, query_bundle: QueryBundle, symbols) -> List[NodeWithScore]:
         query_embedding = Settings.embed_model.get_text_embedding(query_bundle.query_str)
-        base_filter = [{"range": {"chunk_id": {"gte": 1}}}]
-        filters = base_filter + ([{"prefix": {"path": self.path_prefix}}] if self.path_prefix else [])
+        filters = [{"prefix": {"path": self.path_prefix}}] if self.path_prefix else []
         should_clauses = [{"multi_match": {"query": query_bundle.query_str, "fields": ["text^1.0", "text.ru^1.3", "text.en^1.2"]}}]
         query_terms = [t.lower() for t in query_bundle.query_str.split() if t.isalnum()]
         if query_terms:

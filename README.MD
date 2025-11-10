@@ -177,7 +177,8 @@ pip install -r requirements.txt -c constraints.txt
    
 2. **Семантическое разбиение и извлечение метаданных:**
    - LLM (Claude) разбивает файл на логические блоки и сразу извлекает для каждого блока: bm25_boost_terms, symbols, graph_questions, graph_answers
-   - Добавляется `whole` блок (chunk_id=0) на весь файл
+   - Whole-блоки не создаются и не эмбеддятся (исключены из индексации)
+   - Манифест файла создаётся в отдельном индексе `file_manifest` с полями `path` и `hash`
    - Пер‑запросное prompt caching (ephemeral) для системного промпта и текста файла
    - Генерация embeddings (BAAI/bge-m3)
    - Bulk insert в ES (индекс `chunks`) c полями: `path`, `hash`, `text`, `embedding`, `chunk_id`, `chunks`, `start_line`, `end_line`, `kind`, `lang`, `size` (размер чанка в байтах), `file_size` (размер файла в байтах), `file_lines` (общее количество строк в файле), `bm25_boost_terms`, `symbols`, `graph_questions`, `graph_answers`

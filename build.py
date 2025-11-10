@@ -9,7 +9,7 @@ from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from anthropic import Anthropic
 
 from utils import (
-    ES_URL, ES_INDEX_CHUNKS,
+    ES_URL, ES_INDEX_CHUNKS, ES_INDEX_FILE_MANIFEST,
     EMBED_MODEL, REPOS_SAFE_ROOT, git_blob_oid, setup_logging, is_ignored, to_posix,
     CLAUDE_MODEL, ANTHROPIC_API_KEY, LANG_BY_EXT, load_prompt
 )
@@ -24,10 +24,17 @@ EMBEDDING = HuggingFaceEmbedding(EMBED_MODEL, normalize=True)
 
 SPLIT_SYSTEM = load_prompt("prompts/system_split_blocks.txt")
 
-def delete_es_chunks(rel_path):
+def delete_file_data(rel_path):
     query = {"term": {"path": rel_path}}
     ES.options(request_timeout=120).delete_by_query(
         index=ES_INDEX_CHUNKS,
+        body={"query": query},
+        conflicts="proceed",
+        refresh=True,
+        allow_no_indices=True
+    )
+    ES.options(request_timeout=120).delete_by_query(
+        index=ES_INDEX_FILE_MANIFEST,
         body={"query": query},
         conflicts="proceed",
         refresh=True,
@@ -62,8 +69,7 @@ def index_es_file(rel_path, new_hash):
         raise RuntimeError(f"Claude не вернул tool_use для {rel_path} для разбиения на блоки")
     blocks = response.content[0].input["blocks"]
     lines = file_text.count('\n') + 1
-    logger.info(f"Разбито на {len(blocks)} блоков (+whole): {rel_path}")
-    blocks = [{"start_line": 1, "end_line": lines, "title": "whole", "kind": "whole", "bm25_boost_terms": [], "symbols": [], "graph_questions": [], "graph_answers": []}] + blocks
+    logger.info(f"Разбито на {len(blocks)} блоков: {rel_path}")
     total = len(blocks)
     lines_list = file_text.split('\n')
     chunks = []
@@ -92,13 +98,23 @@ def index_es_file(rel_path, new_hash):
             "llm_version": CLAUDE_MODEL,
             **block_def
         })
+    manifest = {
+        "_op_type": "index",
+        "_index": ES_INDEX_FILE_MANIFEST,
+        "_id": rel_path,
+        "path": rel_path,
+        "hash": new_hash,
+        "created_at": now_iso,
+        "updated_at": now_iso
+    }
     logger.info(f"Проанализировано {len(chunks)} чанков для {rel_path}")
     helpers.bulk(ES.options(request_timeout=120), chunks, chunk_size=2000, raise_on_error=True)
+    helpers.bulk(ES.options(request_timeout=120), [manifest], chunk_size=1, raise_on_error=True)
     logger.info(f"➕ Added {rel_path} ({len(chunks)} chunks) in {time.time()-t0:.2f}s")
 
-def get_es_files():
-    query = {"_source": ["path","hash","chunk_id"], "query": {"term": {"chunk_id": 0}}}
-    scroll = ES.search(index=ES_INDEX_CHUNKS, body=query, scroll="5m", size=1000)
+def get_file_manifest():
+    query = {"_source": ["path","hash"], "query": {"match_all": {}}}
+    scroll = ES.search(index=ES_INDEX_FILE_MANIFEST, body=query, scroll="5m", size=1000)
     scroll_id = scroll.get("_scroll_id")
     hits = scroll["hits"]["hits"]
     result = {}
@@ -112,7 +128,7 @@ def get_es_files():
     return result
 
 def process_files():
-    indexed_hash_by_file = get_es_files()
+    indexed_hash_by_file = get_file_manifest()
     processed_paths = set()
     for full in (f for f in REPOS_SAFE_ROOT.rglob('**/*') if f.is_file()):
         rel_path = to_posix(full.relative_to(REPOS_SAFE_ROOT))
@@ -128,17 +144,17 @@ def process_files():
                 continue
             if not current_hash:
                 if stored_hash:
-                    delete_es_chunks(rel_path)
+                    delete_file_data(rel_path)
                 continue
             if stored_hash and stored_hash != current_hash:
-                delete_es_chunks(rel_path)
+                delete_file_data(rel_path)
             index_es_file(rel_path, current_hash)
         except Exception as e:
             logger.error(f"Failed to process file {rel_path}: {e}")
     for rel_path in indexed_hash_by_file.keys():
         if rel_path not in processed_paths:
             try:
-                delete_es_chunks(rel_path)
+                delete_file_data(rel_path)
             except Exception as e:
                 logger.error(f"Failed to delete file {rel_path}: {e}")
 
