@@ -21,25 +21,21 @@ RAW_THRESHOLD = 3000
 def canon_json(obj):
     return json.dumps(obj, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
 
-def make_nav_block(text):
+def make_nav_block(text: str):
     return {
-        "type": "document",
-        "source": {"type": "text", "media_type": "application/json", "data": canon_json({"nav": text})},
-        **CACHE_BLOCK
+        "type": "text",
+        "text": canon_json({"nav": text}),
+        **CACHE_BLOCK,
     }
 
-SYSTEM_NAVIGATION_BLOCK = [make_nav_block(NAVIGATION)]
-
-def make_cached_page_block(page_messages_json_str):
+def make_cached_page_block(page_messages_json_str: str):
     return {
-        "type": "document",
-        "source": {
-            "type": "text",
-            "media_type": "application/json",
-            "data": page_messages_json_str
-        },
-        **CACHE_BLOCK
+        "type": "text",
+        "text": page_messages_json_str,
+        **CACHE_BLOCK,
     }
+
+SYSTEM_NAVIGATION_BLOCK = make_nav_block(NAVIGATION)
 
 def chat(message, history, history_pages, raw):
     logger.info(f"💬 {message}...")
@@ -60,7 +56,7 @@ def chat(message, history, history_pages, raw):
             break
         response = BASE_LLM.messages.create(
             model=CLAUDE_MODEL,
-            system=SYSTEM_NAVIGATION_BLOCK + history_pages[-3:],
+            system=[SYSTEM_NAVIGATION_BLOCK] + history_pages[-3:],
             messages=messages,
             tools=TOOLS,
             max_tokens=4096,
