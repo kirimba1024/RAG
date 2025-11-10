@@ -58,11 +58,10 @@ def chat(message, history, history_pages, raw):
     history = history + [[message, ""]]
     history_pages = history_pages or []
     raw = raw or []
-    messages = [json.loads(msg) for msg in raw]
-    messages.append({"role": "user", "content": [{"type": "text", "text": message}]})
-    page_log = [{"role": "user", "content": [{"type": "text", "text": message}]}]
+    raw.append({"role": "user", "content": [{"type": "text", "text": message}]})
     final_text_parts = []
     loops = 0
+    last_tools = []
     while True:
         loops += 1
         if loops > MAX_TOOL_LOOPS:
@@ -71,22 +70,20 @@ def chat(message, history, history_pages, raw):
         response = BASE_LLM.messages.create(
             model=CLAUDE_MODEL,
             system=[SYSTEM_NAVIGATION_BLOCK] + history_pages[-3:],
-            messages=messages,
+            messages=raw+last_tools,
             tools=TOOLS,
             max_tokens=4096,
         )
         text_chunks = [b.text for b in response.content if b.type == "text"]
         if text_chunks:
             text = "\n".join(text_chunks)
-            messages.append({"role": "assistant", "content": [{"type": "text", "text": text}]})
-            page_log.append({"role": "assistant", "content": [{"type": "text", "text": text}]})
+            raw.append({"role": "assistant", "content": [{"type": "text", "text": text}]})
             final_text_parts.append(text)
         tool_uses = [b for b in response.content if b.type == "tool_use"]
         if not tool_uses:
             break
         tool_use_content = [{"type": "tool_use", "id": tu.id, "name": tu.name, "input": tu.input} for tu in tool_uses]
-        messages.append({"role": "assistant", "content": tool_use_content})
-        page_log.append({"role": "assistant", "content": tool_use_content})
+        last_tools = [{"role": "assistant", "content": tool_use_content}]
         results = []
         for tu in tool_uses:
             if tu.name == "main_search":
@@ -99,23 +96,15 @@ def chat(message, history, history_pages, raw):
                 logger.exception("Unknown tool: %s", tu.name)
                 result = {"error": f"unknown tool {tu.name}"}
             results.append(make_tool_result(tu.id, result))
-        messages.append({"role": "user", "content": results})
-        page_log.append({"role": "user", "content": results})
+        last_tools.append({"role": "user", "content": results})
     accumulated_text = "\n".join(final_text_parts).strip()
-    page_text_only = []
-    for m in page_log:
-        if any(c.get("type") == "text" for c in (m.get("content") or [])):
-            page_text_only.append(m)
-    page_json = canon_json(page_text_only)
-    new_page_block = make_cached_page_block(page_json)
-    raw_size = sum(len(s) for s in raw) + len(page_json)
+    raw_size = sum(len(canon_json(entry)) for entry in raw)
     if raw_size > RAW_THRESHOLD:
+        page_json = canon_json(raw)
+        new_page_block = make_cached_page_block(page_json)
         history_pages.append(new_page_block)
         raw = []
-    else:
-        raw.extend([canon_json(m) for m in page_text_only])
     return history + [[message, accumulated_text]], history_pages, raw, ""
-
 
 with gr.Blocks(title="RAG Assistant") as demo:
     gr.Markdown("# 🤖 RAG Assistant\n**Claude** с инструментами для навигации по коду")
