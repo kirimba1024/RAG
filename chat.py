@@ -5,9 +5,9 @@ from anthropic import Anthropic
 from anthropic.types import TextBlockParam, DocumentBlockParam, MessageParam, ToolResultBlockParam
 
 from utils import CLAUDE_MODEL, ANTHROPIC_API_KEY, load_prompt, setup_logging
-from tools import MAIN_SEARCH_TOOL, EXECUTE_COMMAND_TOOL, GET_CHUNKS_TOOL
+from tools import MAIN_SEARCH_TOOL, EXECUTE_COMMAND_TOOL, GET_CHUNKS_TOOL, DB_QUERY_TOOLS
 from retriever import main_search, get_chunks
-from utils import execute_command
+from utils import execute_command, DB_CONNECTIONS, db_query
 
 logger = setup_logging(Path(__file__).stem)
 
@@ -15,7 +15,7 @@ BASE_LLM = Anthropic(api_key=ANTHROPIC_API_KEY)
 
 NAVIGATION = load_prompt("prompts/system_navigation.txt")
 SUMMARIZE = load_prompt("prompts/system_summarize.txt")
-TOOLS = [MAIN_SEARCH_TOOL, EXECUTE_COMMAND_TOOL, GET_CHUNKS_TOOL]
+TOOLS = [MAIN_SEARCH_TOOL, EXECUTE_COMMAND_TOOL, GET_CHUNKS_TOOL] + DB_QUERY_TOOLS
 MAX_TOOL_LOOPS = 8
 RAW_THRESHOLD = 3000
 
@@ -137,6 +137,8 @@ def chat(message, history, history_pages, raw):
                 result = execute_command(tu.input["command"])
             elif tu.name == "get_chunks":
                 result = get_chunks(tu.input["chunk_ids"])
+            elif tu.name in DB_CONNECTIONS:
+                result = db_query(tu.name, tu.input["question"])
             else:
                 logger.exception("Unknown tool: %s", tu.name)
                 result = {"error": f"unknown tool {tu.name}"}

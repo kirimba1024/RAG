@@ -1,3 +1,5 @@
+from utils import DB_CONNECTIONS
+
 MAIN_SEARCH_TOOL = {
     "name": "main_search",
     "description": "Гибридный поиск чанков по ES → возвращает релевантные чанки с метаданными",
@@ -72,6 +74,27 @@ GET_CHUNKS_TOOL = {
         "required": ["chunk_ids"]
     }
 }
+
+def build_db_query_tools():
+    tools = []
+    for tool_name, conn in DB_CONNECTIONS.items():
+        tools.append({
+            "name": tool_name,
+            "description": conn["description"],
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "question": {
+                        "type": "string",
+                        "description": "вопрос на естественном языке для генерации SQL запроса"
+                    }
+                },
+                "required": ["question"]
+            }
+        })
+    return tools
+
+DB_QUERY_TOOLS = build_db_query_tools()
 
 SPLIT_BLOCKS_TOOL = {
     "name": "split_blocks",

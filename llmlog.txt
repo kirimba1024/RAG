@@ -296,3 +296,15 @@
 - Кэширование: SYSTEM_SUMMARIZE_BLOCK создаётся через summarize_block с text_block_cached, что обеспечивает кэширование промпта суммаризации.
 - Использование: суммаризация используется в следующих запросах через system=[SYSTEM_NAVIGATION_BLOCK] + history_pages[-3:], что позволяет сохранять контекст диалога в сжатом виде.
 - Архитектура: суммаризация работает аналогично навигации - кэшируемый системный блок с промптом, все данные из history_pages и raw включаются в суммаризацию, результат сохраняется как новая страница.
+
+=== Добавлена поддержка работы с базами данных через NL2SQL (2025-01-XX) ===
+- Конфигурация БД через ENV: добавлены переменные DB_<X>_URL, DB_<X>_USERNAME, DB_<X>_PASSWORD, DB_<X>_DESCRIPTION, DB_<X>_TOOL_NAME для каждой БД (X = 1, 2, 3, ...).
+- Функция load_db_connections() в utils.py: загружает конфигурации БД из ENV и создаёт словарь {tool_name: config} для быстрого доступа.
+- Использование llama-index NLSQLTableQueryEngine: автоматическое получение схемы БД и генерация SQL через LLM (Claude) на основе вопросов на естественном языке.
+- Функции get_query_engine() и db_query() в utils.py: кэширование query engines, создание SQLDatabase через SQLAlchemy, выполнение NL2SQL запросов.
+- Динамическое создание тулов: build_db_query_tools() в tools.py создаёт отдельный tool для каждой БД с уникальным именем из DB_<X>_TOOL_NAME.
+- Обработка в chat.py: проверка tu.name in DB_CONNECTIONS и вызов db_query() для выполнения запросов к БД.
+- Упрощение кода: убраны неиспользуемые поля (id, tool_name) из конфигурации, упрощена логика создания engines, убраны лишние проверки.
+- Исправление импортов: Anthropic из llama_index.llms.anthropic (не AnthropicLLM), добавлен алиас AnthropicLLM для избежания конфликта с Anthropic из пакета anthropic.
+- Зависимости: добавлены psycopg2-binary и sqlalchemy в requirements.txt, убран несуществующий пакет llama-index-integrations-database-postgresql.
+- Безопасность: read-only доступ к БД через SQLAlchemy, statement_timeout=30s, только SELECT запросы через NLSQLTableQueryEngine.
