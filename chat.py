@@ -2,7 +2,7 @@ import gradio as gr
 import json
 from pathlib import Path
 from anthropic import Anthropic
-from anthropic.types import TextBlockParam
+from anthropic.types import TextBlockParam, DocumentBlockParam, MessageParam, ToolResultBlockParam
 
 from utils import CLAUDE_MODEL, ANTHROPIC_API_KEY, load_prompt, setup_logging
 from tools import MAIN_SEARCH_TOOL, EXECUTE_COMMAND_TOOL, GET_CHUNKS_TOOL
@@ -18,18 +18,18 @@ TOOLS = [MAIN_SEARCH_TOOL, EXECUTE_COMMAND_TOOL, GET_CHUNKS_TOOL]
 MAX_TOOL_LOOPS = 8
 RAW_THRESHOLD = 3000
 
-def canon_json(obj):
+def canon_json(obj) -> str:
     return json.dumps(obj, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
 
-def text_block(value: str) -> dict:
+def text_block(value: str) -> TextBlockParam:
     return {"type": "text", "text": value}
 
-def text_block_cached(value: str) -> dict:
+def text_block_cached(value: str) -> TextBlockParam:
     return {"type": "text", "text": value, "cache_control": {"type": "ephemeral"}}
 
-def doc_block(input: str) -> dict:
-    is_json = isinstance(input, (dict, list))
-    data = canon_json(input) if is_json else str(input)
+def doc_block(doc_data) -> DocumentBlockParam:
+    is_json = isinstance(doc_data, (dict, list))
+    data = canon_json(doc_data) if is_json else str(doc_data)
     media = "application/json" if is_json else "text/plain"
     return {"type": "document", "source": {"type": "text", "media_type": media, "data": data}}
 
@@ -39,39 +39,40 @@ def nav_block(text: str) -> TextBlockParam:
 def page_block_from_messages(messages_list: list) -> TextBlockParam:
     return text_block_cached(canon_json(messages_list))
 
-def msg(role: str, content) -> dict:
+def msg(role: str, content) -> MessageParam:
     if isinstance(content, str):
         content = [text_block(content)]
     elif isinstance(content, dict):
         content = [content]
     return {"role": role, "content": content}
 
-def user_text(text: str) -> dict:
+def user_text(text: str) -> MessageParam:
     return msg("user", text)
 
-def assistant_text(text: str) -> dict:
+def assistant_text(text: str) -> MessageParam:
     return msg("assistant", text)
 
-def tool_use_msg(tool_uses) -> dict:
+def tool_use_msg(tool_uses) -> MessageParam:
     return msg("assistant", [
         {"type": "tool_use", "id": tu.id, "name": tu.name, "input": tu.input}
         for tu in tool_uses
     ])
 
-def tool_result_block(tool_use_id: str, result) -> dict:
+def tool_result_block(tool_use_id: str, tool_result_data) -> ToolResultBlockParam:
     return {
         "type": "tool_result",
         "tool_use_id": tool_use_id,
-        "content": [doc_block(result)],
+        "content": [doc_block(tool_result_data)],
     }
 
-def user_tool_results(results: list) -> dict:
+def user_tool_results(results: list) -> MessageParam:
     return {"role": "user", "content": results}
 
 SYSTEM_NAVIGATION_BLOCK = nav_block(NAVIGATION)
 
 def chat(message, history, history_pages, raw):
     logger.info(f"💬 {message}...")
+    history = history or []
     history_pages = history_pages or []
     raw = raw or []
     raw.append(user_text(message))
