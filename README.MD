@@ -34,7 +34,7 @@
 ### Ключевые файлы
 - `build.py` — инкрементальная индексация repos_safe/ в ES
 - `graph_processor.py` — пост-процессинг графа связей между чанками (обогащение полем links на основе Q-A семантической схожести)
-- `chat.py` — Gradio интерфейс с двухэтапным циклом (GATHER + ANSWER)
+- `chat.py` — Gradio интерфейс с двухэтапным циклом (GATHER + ANSWER) и суммаризацией диалога
 - `retriever.py` — гибридный поиск ES (kNN+BM25+reranking)
 - `tools.py` — инструменты для Claude (main_search, execute_command)
 - `utils.py` — конфигурация и вспомогательные функции
@@ -250,6 +250,8 @@ http://localhost:5601  # Kibana (Elasticsearch данные)
 - BASE_LLM: Claude (модель из CLAUDE_MODEL env)
 - Двухэтапный цикл: GATHER (сбор информации) → ANSWER (формирование ответа)
 - Prompt caching включен (cache_control: ephemeral)
+- История контекста: разбивается на страницы (history_pages) и сырой хвост (raw); страницы кэшируются и используются в system-блоках
+- Суммаризация диалога: кнопка "Суммаризировать" сжимает весь накопленный контекст в одну кэшируемую страницу через промпт system_summarize.txt
 
 **Embeddings:**
 - Model: BAAI/bge-m3 (1024 dims)

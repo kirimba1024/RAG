@@ -14,6 +14,7 @@ logger = setup_logging(Path(__file__).stem)
 BASE_LLM = Anthropic(api_key=ANTHROPIC_API_KEY)
 
 NAVIGATION = load_prompt("prompts/system_navigation.txt")
+SUMMARIZE = load_prompt("prompts/system_summarize.txt")
 TOOLS = [MAIN_SEARCH_TOOL, EXECUTE_COMMAND_TOOL, GET_CHUNKS_TOOL]
 MAX_TOOL_LOOPS = 8
 RAW_THRESHOLD = 3000
@@ -35,6 +36,9 @@ def doc_block(doc_data) -> DocumentBlockParam:
 
 def nav_block(text: str) -> TextBlockParam:
     return text_block_cached(canon_json({"nav": text}))
+
+def summarize_block(text: str) -> TextBlockParam:
+    return text_block_cached(canon_json({"summarize": text}))
 
 def page_block_from_messages(messages_list: list) -> TextBlockParam:
     return text_block_cached(canon_json(messages_list))
@@ -69,6 +73,31 @@ def user_tool_results(results: list) -> MessageParam:
     return {"role": "user", "content": results}
 
 SYSTEM_NAVIGATION_BLOCK = nav_block(NAVIGATION)
+SYSTEM_SUMMARIZE_BLOCK = summarize_block(SUMMARIZE)
+
+def summarize_dialog(history, history_pages, raw):
+    logger.info("📝 Суммаризация диалога...")
+    history = history or []
+    history_pages = history_pages or []
+    raw = raw or []
+    all_messages = []
+    for page in history_pages:
+        page_data = json.loads(page["text"])
+        all_messages.extend(page_data)
+    all_messages.extend(raw)
+    if not all_messages:
+        logger.warning("Нет данных для суммаризации")
+        return history, history_pages, raw
+    response = BASE_LLM.messages.create(
+        model=CLAUDE_MODEL,
+        system=[SYSTEM_SUMMARIZE_BLOCK],
+        messages=all_messages,
+        max_tokens=4096,
+    )
+    text_chunks = [b.text for b in response.content if b.type == "text"]
+    summary_text = "\n".join(text_chunks).strip()
+    summary_page = page_block_from_messages([assistant_text(summary_text)])
+    return history, [summary_page], []
 
 def chat(message, history, history_pages, raw):
     logger.info(f"💬 {message}...")
@@ -137,6 +166,7 @@ with gr.Blocks(title="RAG Assistant") as demo:
             placeholder="Задайте вопрос...", show_label=False, container=False, scale=7
         )
         submit = gr.Button("Отправить", variant="primary", scale=1)
+        summarize_btn = gr.Button("Суммаризировать", scale=1)
         clear = gr.Button("Очистить", scale=1)
 
     gr.Examples(
@@ -151,6 +181,7 @@ with gr.Blocks(title="RAG Assistant") as demo:
 
     msg.submit(chat, inputs=[msg, chatbot, history_pages_state, raw_state], outputs=[chatbot, history_pages_state, raw_state, msg])
     submit.click(chat, inputs=[msg, chatbot, history_pages_state, raw_state], outputs=[chatbot, history_pages_state, raw_state, msg])
+    summarize_btn.click(summarize_dialog, inputs=[chatbot, history_pages_state, raw_state], outputs=[chatbot, history_pages_state, raw_state])
     clear.click(lambda: ([], [], [], ""), outputs=[chatbot, history_pages_state, raw_state, msg])
 
 if __name__ == "__main__":
