@@ -97,12 +97,18 @@ def index_es_file(rel_path, new_hash):
     logger.info(f"➕ Added {rel_path} ({len(chunks)} chunks) in {time.time()-t0:.2f}s")
 
 def get_es_files():
-    query = {"size": 10000, "_source": ["path","hash","chunk_id"], "query": {"term": {"chunk_id": 0}}}
-    response = ES.search(index=ES_INDEX_CHUNKS, body=query)
+    query = {"_source": ["path","hash","chunk_id"], "query": {"term": {"chunk_id": 0}}}
+    scroll = ES.search(index=ES_INDEX_CHUNKS, body=query, scroll="5m", size=1000)
+    scroll_id = scroll.get("_scroll_id")
+    hits = scroll["hits"]["hits"]
     result = {}
-    for hit in response.get("hits", {}).get("hits", []):
-        src = hit.get("_source", {})
-        result[src.get("path")] = src.get("hash")
+    while len(hits) > 0:
+        for hit in hits:
+            src = hit.get("_source", {})
+            result[src.get("path")] = src.get("hash")
+        scroll = ES.scroll(scroll_id=scroll_id, scroll="5m")
+        hits = scroll["hits"]["hits"]
+    ES.clear_scroll(scroll_id=scroll_id)
     return result
 
 def process_files():
