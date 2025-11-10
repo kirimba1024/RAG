@@ -14,7 +14,6 @@ logger = setup_logging(Path(__file__).stem)
 BASE_LLM = Anthropic(api_key=ANTHROPIC_API_KEY)
 
 NAVIGATION = load_prompt("prompts/system_navigation.txt")
-CACHE_BLOCK = {"cache_control": {"type": "ephemeral"}}
 TOOLS = [MAIN_SEARCH_TOOL, EXECUTE_COMMAND_TOOL, GET_CHUNKS_TOOL]
 MAX_TOOL_LOOPS = 8
 RAW_THRESHOLD = 3000
@@ -22,68 +21,61 @@ RAW_THRESHOLD = 3000
 def canon_json(obj):
     return json.dumps(obj, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
 
-def make_user_text_message(text: str) -> dict:
-    return {"type": "text", "text": text}
+def text_block(value: str) -> dict:
+    return {"type": "text", "text": value}
 
-def make_user_text_message_cached(text: str) -> dict:
-    return {"type": "text", "text": text, **CACHE_BLOCK}
+def text_block_cached(value: str) -> dict:
+    return {"type": "text", "text": value, "cache_control": {"type": "ephemeral"}}
 
-def make_nav_block(text: str) -> TextBlockParam:
-    return {
-        "type": "text",
-        "text": canon_json({"nav": text}),
-        **CACHE_BLOCK,
-    }
+def doc_block(input: str) -> dict:
+    is_json = isinstance(input, (dict, list))
+    data = canon_json(input) if is_json else str(input)
+    media = "application/json" if is_json else "text/plain"
+    return {"type": "document", "source": {"type": "text", "media_type": media, "data": data}}
 
-def make_cached_page_block(page_messages_json_str: str) -> TextBlockParam:
-    return {
-        "type": "text",
-        "text": page_messages_json_str,
-        **CACHE_BLOCK,
-    }
+def nav_block(text: str) -> TextBlockParam:
+    return text_block_cached(canon_json({"nav": text}))
 
-def make_tool_result(tool_use_id: str, result) -> dict:
-    is_json = isinstance(result, (dict, list))
+def page_block_from_messages(messages_list: list) -> TextBlockParam:
+    return text_block_cached(canon_json(messages_list))
+
+def msg(role: str, content) -> dict:
+    if isinstance(content, str):
+        content = [text_block(content)]
+    elif isinstance(content, dict):
+        content = [content]
+    return {"role": role, "content": content}
+
+def user_text(text: str) -> dict:
+    return msg("user", text)
+
+def assistant_text(text: str) -> dict:
+    return msg("assistant", text)
+
+def tool_use_msg(tool_uses) -> dict:
+    return msg("assistant", [
+        {"type": "tool_use", "id": tu.id, "name": tu.name, "input": tu.input}
+        for tu in tool_uses
+    ])
+
+def tool_result_block(tool_use_id: str, result) -> dict:
     return {
         "type": "tool_result",
         "tool_use_id": tool_use_id,
-        "content": [{
-            "type": "document",
-            "source": {
-                "type": "text",
-                "media_type": "application/json" if is_json else "text/plain",
-                "data": canon_json(result) if is_json else str(result),
-            }
-        }]
+        "content": [doc_block(result)],
     }
 
-def make_tool_use_message(tool_uses) -> dict:
-    return {
-        "role": "assistant",
-        "content": [
-            {"type": "tool_use", "id": tu.id, "name": tu.name, "input": tu.input}
-            for tu in tool_uses
-        ],
-    }
-
-def make_user_tool_result_message(results: list) -> dict:
+def user_tool_results(results: list) -> dict:
     return {"role": "user", "content": results}
 
-def make_user_message(text: str) -> dict:
-    return {"role": "user", "content": [{"type": "text", "text": text}]}
-
-def make_assistant_message(text: str) -> dict:
-    return {"role": "assistant", "content": [{"type": "text", "text": text}]}
-
-SYSTEM_NAVIGATION_BLOCK = make_nav_block(NAVIGATION)
+SYSTEM_NAVIGATION_BLOCK = nav_block(NAVIGATION)
 
 def chat(message, history, history_pages, raw):
     logger.info(f"💬 {message}...")
-    history = history + [[message, ""]]
     history_pages = history_pages or []
     raw = raw or []
-    raw.append(make_user_message(message))
-    final_text_parts = []
+    raw.append(user_text(message))
+    answers = []
     loops = 0
     last_tools = []
     while True:
@@ -94,20 +86,20 @@ def chat(message, history, history_pages, raw):
         response = BASE_LLM.messages.create(
             model=CLAUDE_MODEL,
             system=[SYSTEM_NAVIGATION_BLOCK] + history_pages[-3:],
-            messages=raw+last_tools,
+            messages=raw + last_tools,
             tools=TOOLS,
             max_tokens=4096,
         )
         text_chunks = [b.text for b in response.content if b.type == "text"]
         if text_chunks:
             text = "\n".join(text_chunks)
-            raw.append(make_assistant_message(text))
-            final_text_parts.append(text)
+            raw.append(assistant_text(text))
+            answers.append(text)
         tool_uses = [b for b in response.content if b.type == "tool_use"]
         if not tool_uses:
             break
-        last_tools = [make_tool_use_message(tool_uses)]
-        results = []
+        last_tools = [tool_use_msg(tool_uses)]
+        tool_results = []
         for tu in tool_uses:
             if tu.name == "main_search":
                 result = main_search(tu.input["question"], tu.input["path_prefix"], tu.input["top_n"], tu.input.get("symbols"), tu.input.get("use_reranker", True))
@@ -118,16 +110,13 @@ def chat(message, history, history_pages, raw):
             else:
                 logger.exception("Unknown tool: %s", tu.name)
                 result = {"error": f"unknown tool {tu.name}"}
-            results.append(make_tool_result(tu.id, result))
-        last_tools.append(make_user_tool_result_message(results))
-    accumulated_text = "\n".join(final_text_parts).strip()
-    raw_size = sum(len(canon_json(entry)) for entry in raw)
-    if raw_size > RAW_THRESHOLD:
-        page_json = canon_json(raw)
-        new_page_block = make_cached_page_block(page_json)
-        history_pages.append(new_page_block)
-        raw = []
-    return history + [[message, accumulated_text]], history_pages, raw, ""
+            tool_results.append(tool_result_block(tu.id, result))
+        last_tools.append(user_tool_results(tool_results))
+        raw_size = sum(len(canon_json(entry)) for entry in raw)
+        if raw_size > RAW_THRESHOLD:
+            history_pages.append(page_block_from_messages(raw))
+            raw = []
+    return history + [[message, "\n".join(answers).strip()]], history_pages, raw, ""
 
 with gr.Blocks(title="RAG Assistant") as demo:
     gr.Markdown("# 🤖 RAG Assistant\n**Claude** с инструментами для навигации по коду")
