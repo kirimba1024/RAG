@@ -58,6 +58,8 @@ def index_es_file(rel_path, new_hash):
         tools=[SPLIT_BLOCKS_TOOL],
         extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"}
     )
+    if not response.content or response.content[0].type != "tool_use":
+        raise RuntimeError(f"Claude не вернул tool_use для {rel_path} для разбиения на блоки")
     blocks = response.content[0].input["blocks"]
     lines = file_text.count('\n') + 1
     logger.info(f"Разбито на {len(blocks)} блоков (+whole): {rel_path}")
