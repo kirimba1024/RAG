@@ -2,6 +2,7 @@ import gradio as gr
 import json
 from pathlib import Path
 from anthropic import Anthropic
+from anthropic.types import TextBlockParam
 
 from utils import CLAUDE_MODEL, ANTHROPIC_API_KEY, load_prompt, setup_logging
 from tools import MAIN_SEARCH_TOOL, EXECUTE_COMMAND_TOOL, GET_CHUNKS_TOOL
@@ -21,18 +22,33 @@ RAW_THRESHOLD = 3000
 def canon_json(obj):
     return json.dumps(obj, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
 
-def make_nav_block(text: str):
+def make_nav_block(text: str) -> TextBlockParam:
     return {
         "type": "text",
         "text": canon_json({"nav": text}),
         **CACHE_BLOCK,
     }
 
-def make_cached_page_block(page_messages_json_str: str):
+def make_cached_page_block(page_messages_json_str: str) -> TextBlockParam:
     return {
         "type": "text",
         "text": page_messages_json_str,
         **CACHE_BLOCK,
+    }
+
+def make_tool_result(tool_use_id: str, result) -> dict:
+    is_json = isinstance(result, (dict, list))
+    return {
+        "type": "tool_result",
+        "tool_use_id": tool_use_id,
+        "content": [{
+            "type": "document",
+            "source": {
+                "type": "text",
+                "media_type": "application/json" if is_json else "text/plain",
+                "data": canon_json(result) if is_json else str(result),
+            }
+        }]
     }
 
 SYSTEM_NAVIGATION_BLOCK = make_nav_block(NAVIGATION)
@@ -47,8 +63,6 @@ def chat(message, history, history_pages, raw):
     page_log = [{"role": "user", "content": [{"type": "text", "text": message}]}]
     final_text_parts = []
     loops = 0
-    had_any_text = False
-    tool_facts = []
     while True:
         loops += 1
         if loops > MAX_TOOL_LOOPS:
@@ -63,7 +77,6 @@ def chat(message, history, history_pages, raw):
         )
         text_chunks = [b.text for b in response.content if b.type == "text"]
         if text_chunks:
-            had_any_text = True
             text = "\n".join(text_chunks)
             messages.append({"role": "assistant", "content": [{"type": "text", "text": text}]})
             page_log.append({"role": "assistant", "content": [{"type": "text", "text": text}]})
@@ -71,45 +84,21 @@ def chat(message, history, history_pages, raw):
         tool_uses = [b for b in response.content if b.type == "tool_use"]
         if not tool_uses:
             break
-        for tu in tool_uses:
-            if tu.name == "main_search":
-                tool_facts.append(f"search: {tu.input.get('question', '')}@{tu.input.get('path_prefix', '')} top={tu.input.get('top_n')}")
-            elif tu.name == "get_chunks":
-                tool_facts.append(f"get_chunks: {len(tu.input.get('chunk_ids', []))} ids")
-            elif tu.name == "execute_command":
-                tool_facts.append(f"exec: {tu.input.get('command', '')[:60]}")
-        messages.append({
-            "role": "assistant",
-            "content": [{"type": "tool_use", "id": tu.id, "name": tu.name, "input": tu.input} for tu in tool_uses]
-        })
-        page_log.append({
-            "role": "assistant",
-            "content": [{"type": "tool_use", "id": tu.id, "name": tu.name, "input": tu.input} for tu in tool_uses]
-        })
+        tool_use_content = [{"type": "tool_use", "id": tu.id, "name": tu.name, "input": tu.input} for tu in tool_uses]
+        messages.append({"role": "assistant", "content": tool_use_content})
+        page_log.append({"role": "assistant", "content": tool_use_content})
         results = []
         for tu in tool_uses:
             if tu.name == "main_search":
-                r = main_search(tu.input["question"], tu.input["path_prefix"], tu.input["top_n"], tu.input.get("symbols"), tu.input.get("use_reranker", True))
+                result = main_search(tu.input["question"], tu.input["path_prefix"], tu.input["top_n"], tu.input.get("symbols"), tu.input.get("use_reranker", True))
             elif tu.name == "execute_command":
-                r = execute_command(tu.input["command"])
+                result = execute_command(tu.input["command"])
             elif tu.name == "get_chunks":
-                r = get_chunks(tu.input["chunk_ids"])
+                result = get_chunks(tu.input["chunk_ids"])
             else:
                 logger.exception("Unknown tool: %s", tu.name)
-                r = {"error": f"unknown tool {tu.name}"}
-            is_json = isinstance(r, (dict, list))
-            results.append({
-                "type": "tool_result",
-                "tool_use_id": tu.id,
-                "content": [{
-                    "type": "document",
-                    "source": {
-                        "type": "text",
-                        "media_type": "application/json" if is_json else "text/plain",
-                        "data": canon_json(r) if is_json else str(r),
-                    }
-                }]
-            })
+                result = {"error": f"unknown tool {tu.name}"}
+            results.append(make_tool_result(tu.id, result))
         messages.append({"role": "user", "content": results})
         page_log.append({"role": "user", "content": results})
     accumulated_text = "\n".join(final_text_parts).strip()
@@ -117,9 +106,6 @@ def chat(message, history, history_pages, raw):
     for m in page_log:
         if any(c.get("type") == "text" for c in (m.get("content") or [])):
             page_text_only.append(m)
-    if not had_any_text and tool_facts:
-        fact_line = " · ".join(tool_facts)[:500]
-        page_text_only.append({"role": "assistant", "content": [{"type": "text", "text": f"[facts] {fact_line}"}]})
     page_json = canon_json(page_text_only)
     new_page_block = make_cached_page_block(page_json)
     raw_size = sum(len(s) for s in raw) + len(page_json)
