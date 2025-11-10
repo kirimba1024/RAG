@@ -22,6 +22,12 @@ RAW_THRESHOLD = 3000
 def canon_json(obj):
     return json.dumps(obj, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
 
+def make_user_text_message(text: str) -> dict:
+    return {"type": "text", "text": text}
+
+def make_user_text_message_cached(text: str) -> dict:
+    return {"type": "text", "text": text, **CACHE_BLOCK}
+
 def make_nav_block(text: str) -> TextBlockParam:
     return {
         "type": "text",
@@ -51,6 +57,24 @@ def make_tool_result(tool_use_id: str, result) -> dict:
         }]
     }
 
+def make_tool_use_message(tool_uses) -> dict:
+    return {
+        "role": "assistant",
+        "content": [
+            {"type": "tool_use", "id": tu.id, "name": tu.name, "input": tu.input}
+            for tu in tool_uses
+        ],
+    }
+
+def make_user_tool_result_message(results: list) -> dict:
+    return {"role": "user", "content": results}
+
+def make_user_message(text: str) -> dict:
+    return {"role": "user", "content": [{"type": "text", "text": text}]}
+
+def make_assistant_message(text: str) -> dict:
+    return {"role": "assistant", "content": [{"type": "text", "text": text}]}
+
 SYSTEM_NAVIGATION_BLOCK = make_nav_block(NAVIGATION)
 
 def chat(message, history, history_pages, raw):
@@ -58,7 +82,7 @@ def chat(message, history, history_pages, raw):
     history = history + [[message, ""]]
     history_pages = history_pages or []
     raw = raw or []
-    raw.append({"role": "user", "content": [{"type": "text", "text": message}]})
+    raw.append(make_user_message(message))
     final_text_parts = []
     loops = 0
     last_tools = []
@@ -77,13 +101,12 @@ def chat(message, history, history_pages, raw):
         text_chunks = [b.text for b in response.content if b.type == "text"]
         if text_chunks:
             text = "\n".join(text_chunks)
-            raw.append({"role": "assistant", "content": [{"type": "text", "text": text}]})
+            raw.append(make_assistant_message(text))
             final_text_parts.append(text)
         tool_uses = [b for b in response.content if b.type == "tool_use"]
         if not tool_uses:
             break
-        tool_use_content = [{"type": "tool_use", "id": tu.id, "name": tu.name, "input": tu.input} for tu in tool_uses]
-        last_tools = [{"role": "assistant", "content": tool_use_content}]
+        last_tools = [make_tool_use_message(tool_uses)]
         results = []
         for tu in tool_uses:
             if tu.name == "main_search":
@@ -96,7 +119,7 @@ def chat(message, history, history_pages, raw):
                 logger.exception("Unknown tool: %s", tu.name)
                 result = {"error": f"unknown tool {tu.name}"}
             results.append(make_tool_result(tu.id, result))
-        last_tools.append({"role": "user", "content": results})
+        last_tools.append(make_user_tool_result_message(results))
     accumulated_text = "\n".join(final_text_parts).strip()
     raw_size = sum(len(canon_json(entry)) for entry in raw)
     if raw_size > RAW_THRESHOLD:
