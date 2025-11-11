@@ -3,6 +3,7 @@ import hashlib
 import logging
 import os
 import re
+import subprocess
 import unicodedata
 from pathlib import Path
 from io import BytesIO
@@ -186,15 +187,16 @@ def extract_binary_content(path: Path):
     return None
 
 def execute_command(command: str):
-    client = docker.from_env()
-    container = client.containers.get(SANDBOX_CONTAINER_NAME)
-    result = container.exec_run(
-        cmd=["timeout", "30", "sh", "-c", command],
-        user="nobody"
-    )
+    ps_cmd = ['docker', 'ps', '--filter', f'name={SANDBOX_CONTAINER_NAME}', '--format', '{{.ID}}']
+    ps_result = subprocess.run(ps_cmd, capture_output=True, text=True)
+    if ps_result.returncode != 0 or not ps_result.stdout.strip():
+        raise RuntimeError(f"Контейнер {SANDBOX_CONTAINER_NAME} не найден")
+    container_id = ps_result.stdout.strip()
+    exec_cmd = ['docker', 'exec', '-u', 'nobody', container_id, 'timeout', '30', 'sh', '-c', command]
+    exec_result = subprocess.run(exec_cmd, capture_output=True, text=True)
     return {
-        "stdout": result.output.decode('utf-8'),
-        "exit_code": result.exit_code
+        "stdout": exec_result.stdout,
+        "exit_code": exec_result.returncode
     }
 
 def get_query_engine(tool_name):
