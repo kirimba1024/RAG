@@ -71,7 +71,7 @@ def retrieve_fusion_nodes(question: str, path_prefix: str, top_n: int, symbols, 
     return [nws.node for nws in candidates[:top_n]]
 
 def format_chunk_data(chunk_id, metadata):
-    whitelist = {"text", "path", "start_line", "end_line", "file_lines", "kind", "lang", "mime", "title", "links"}
+    whitelist = {"text", "path", "start_line", "end_line", "file_lines", "kind", "lang", "mime", "title", "links_out", "links_in"}
     return {
         "chunk_id": chunk_id,
         **{k: v for k, v in metadata.items() if k in whitelist}

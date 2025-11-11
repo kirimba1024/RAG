@@ -308,3 +308,13 @@
 - Исправление импортов: Anthropic из llama_index.llms.anthropic (не AnthropicLLM), добавлен алиас AnthropicLLM для избежания конфликта с Anthropic из пакета anthropic.
 - Зависимости: добавлены psycopg2-binary и sqlalchemy в requirements.txt, убран несуществующий пакет llama-index-integrations-database-postgresql.
 - Безопасность: read-only доступ к БД через SQLAlchemy, statement_timeout=30s, только SELECT запросы через NLSQLTableQueryEngine.
+
+=== Разделение links на links_out и links_in (2025-01-XX) ===
+- Переход от единого поля links к двум направленным полям links_out и links_in для явного разделения исходящих и входящих связей в графе.
+- graph_processor.py: построение графа теперь собирает edges_out и edges_in отдельно, сортирует и обрезает до MAX_LINKS_PER_CHUNK для каждого направления, записывает оба поля в ES через bulk update.
+- images/elasticsearch/index_chunks.json: поле links заменено на links_out и links_in (оба type="object", enabled=false).
+- retriever.py: whitelist в format_chunk_data обновлён для включения links_out и links_in вместо links.
+- tools.py: описание GET_CHUNKS_TOOL обновлено для упоминания links_out/links_in.
+- prompts/system_navigation.txt: добавлено пояснение разницы между links_out (исходящие связи - вопросы этого чанка находят ответы в целевых) и links_in (входящие связи - другие чанки указывают на этот чанк).
+- ARCHITECTURE.md и README.MD: все упоминания links заменены на links_out/links_in с пояснениями разницы.
+- Преимущества: явное разделение направлений связей упрощает навигацию по графу и понимание структуры зависимостей между чанками.

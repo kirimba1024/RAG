@@ -61,7 +61,7 @@ EXECUTE_COMMAND_TOOL = {
 
 GET_CHUNKS_TOOL = {
     "name": "get_chunks",
-    "description": "Запрос чанков по их chunk_id для поиска. Удоно для графовой Q-A связанности через links.",
+    "description": "Запрос чанков по их chunk_id для поиска. Удобно для графовой Q-A навигации через links_out/links_in.",
     "input_schema": {
         "type": "object",
         "properties": {
