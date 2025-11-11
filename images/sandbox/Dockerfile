@@ -9,8 +9,6 @@ RUN --mount=type=cache,target=/var/cache/apk \
     gawk \
     sed \
     bash \
-    curl \
-    wget \
     git \
     jq \
     tree \

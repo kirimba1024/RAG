@@ -31,4 +31,5 @@ services:
     image: rag-sandbox:stable
     container_name: ${SANDBOX_CONTAINER_NAME:-rag-assistant-rag-sandbox-1}
     restart: unless-stopped
+    network_mode: none
 
