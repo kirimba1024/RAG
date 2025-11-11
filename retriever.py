@@ -3,7 +3,6 @@ from pathlib import Path
 
 import torch
 from elasticsearch import Elasticsearch
-from llama_index.core.base.base_retriever import BaseRetriever
 from llama_index.core.schema import QueryBundle, BaseNode, TextNode, NodeWithScore
 from llama_index.core import Settings
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
@@ -23,58 +22,51 @@ if embedding_dim != 1024:
 DEVICE = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
 RERANKER = SentenceTransformerRerank(model=RERANK_MODEL, top_n=10, device=DEVICE)
 
-def normal_prefix(id_prefix):
-    return (id_prefix or "").lstrip("/").lstrip(".")
+SOURCE_FIELDS = ["text", "path", "start_line", "end_line", "title", "symbols", "lang", "mime", "file_lines", "kind", "links_in", "links_out", "chunk_id"]
 
-class HybridESRetriever(BaseRetriever):
-    def __init__(self, es, index, path_prefix: str, top_k: int):
-        super().__init__()
-        self.es = es
-        self.index = index
-        self.top_k = top_k
-        self.path_prefix = normal_prefix(path_prefix)
-
-    def _retrieve(self, query_bundle: QueryBundle, symbols) -> List[NodeWithScore]:
-        query_embedding = Settings.embed_model.get_text_embedding(query_bundle.query_str)
-        filters = [{"prefix": {"path": self.path_prefix}}] if self.path_prefix else []
-        should_clauses = [{"multi_match": {"query": query_bundle.query_str, "fields": ["text^1.0", "text.ru^1.3", "text.en^1.2"]}}]
-        query_terms = [t.lower() for t in query_bundle.query_str.split() if t.isalnum()]
-        if query_terms:
-            should_clauses.append({"terms": {"bm25_boost_terms": query_terms, "boost": 1.5}})
-            should_clauses.append({"terms": {"symbols": query_terms, "boost": 2.0}})
-        if symbols:
-            symbol_terms = [s.lower() for s in symbols if s]
-            should_clauses.append({"terms": {"symbols": symbol_terms, "boost": 2.5}})
-        knn_config = {"field": "embedding", "query_vector": query_embedding, "k": self.top_k, "num_candidates": self.top_k * 5}
-        if filters:
-            knn_config["filter"] = {"bool": {"must": filters}}
-        response = self.es.search(
-            index=self.index,
-            knn=knn_config,
-            query={"bool": {"filter": filters, "should": should_clauses}},
-            size=self.top_k,
-            request_timeout=30
-        )
-        return [NodeWithScore(node=TextNode(id_=hit["_id"], text=hit["_source"]["text"], metadata=dict(hit["_source"])), score=float(hit["_score"])) for hit in response["hits"]["hits"]]
+def rrf_fusion(ranked_lists, k=60):
+    pos = [{d: i for i, d in enumerate(lst)} for lst in ranked_lists]
+    all_ids = set().union(*ranked_lists)
+    scores = {d: sum(1.0 / (k + p[d] + 1) for p in pos if d in p) for d in all_ids}
+    return sorted(scores, key=scores.get, reverse=True)
 
 def retrieve_fusion_nodes(question: str, path_prefix: str, top_n: int, symbols, use_reranker) -> List[BaseNode]:
-    top_k = top_n * 3 if use_reranker else top_n
-    retriever = HybridESRetriever(es=ES, index=ES_INDEX_CHUNKS, path_prefix=path_prefix, top_k=top_k)
-    qb = QueryBundle(query_str=question)
-    candidates = retriever._retrieve(qb, symbols)
-    logger.info(f"🔍 Retriever вернул {len(candidates)} чанков (query: '{question[:50]}...')")
-    if use_reranker:
+    shortlist = max(6 * top_n, 32) if use_reranker else top_n
+    size = shortlist
+    path_filter = [{"prefix": {"path": (path_prefix or "").lstrip("/").lstrip(".")}}] if path_prefix else []
+    should_clauses = [{"multi_match": {"query": question, "fields": ["text^1.0", "text.ru^1.3", "text.en^1.2"]}}]
+    query_terms = [t.lower() for t in question.split() if t.isalnum()]
+    if query_terms:
+        should_clauses.extend([
+            {"terms": {"bm25_boost_terms": query_terms, "boost": 1.5}},
+            {"terms": {"symbols": query_terms, "boost": 2.0}}
+        ])
+    if symbols:
+        should_clauses.append({"terms": {"symbols": [s.lower() for s in symbols if s], "boost": 2.5}})
+    bm25_response = ES.search(
+        index=ES_INDEX_CHUNKS,
+        body={"size": size, "query": {"bool": {"filter": path_filter, "should": should_clauses, "minimum_should_match": 1}}, "_source": {"includes": SOURCE_FIELDS}}
+    )
+    bm25_hits = {hit["_id"]: hit for hit in bm25_response["hits"]["hits"]}
+    query_embedding = Settings.embed_model.get_text_embedding(question)
+    knn_config = {"field": "embedding", "query_vector": query_embedding, "k": size, "num_candidates": shortlist * 4}
+    if path_filter:
+        knn_config["filter"] = {"bool": {"must": path_filter}}
+    knn_response = ES.search(index=ES_INDEX_CHUNKS, body={"size": size, "knn": knn_config, "_source": {"includes": SOURCE_FIELDS}})
+    knn_hits = {hit["_id"]: hit for hit in knn_response["hits"]["hits"]}
+    fused_ids = rrf_fusion([bm25_hits.keys(), knn_hits.keys()])[:shortlist]
+    all_hits = {**bm25_hits, **knn_hits}
+    candidates = [NodeWithScore(node=TextNode(id_=doc_id, text=all_hits[doc_id]["_source"]["text"], metadata=dict(all_hits[doc_id]["_source"])), score=0.0) for doc_id in fused_ids]
+    logger.info(f"🔗 RRF: bm25={len(bm25_hits)} knn={len(knn_hits)} → shortlist={len(candidates)}")
+    if use_reranker and candidates:
         RERANKER.top_n = top_n
-        reranked = RERANKER.postprocess_nodes(candidates, query_bundle=qb)
-        logger.info(f"⭐ Reranker отобрал {len(reranked)} чанков из {len(candidates)}")
-        return [nws.node for nws in reranked]
+        return [nws.node for nws in RERANKER.postprocess_nodes(candidates, query_bundle=QueryBundle(query_str=question))]
     return [nws.node for nws in candidates[:top_n]]
 
-def format_chunk_data(chunk_id, metadata):
-    whitelist = {"text", "path", "start_line", "end_line", "file_lines", "kind", "lang", "mime", "title", "links_out", "links_in"}
+def format_chunk_data(doc_id, metadata):
     return {
-        "chunk_id": chunk_id,
-        **{k: v for k, v in metadata.items() if k in whitelist}
+        "id": doc_id,
+        **{k: v for k, v in metadata.items() if k in set(SOURCE_FIELDS)}
     }
 
 def get_chunks(chunk_ids):
