@@ -65,9 +65,17 @@ def index_es_file(rel_path, new_hash):
         tools=[SPLIT_BLOCKS_TOOL],
         extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"}
     )
-    if not response.content or response.content[0].type != "tool_use":
+    tool_use_block = next((b for b in response.content if b.type == "tool_use"), None)
+    text_content = "\n".join(b.text for b in response.content if b.type == "text") if response.content else ""
+    if text_content:
+        logger.info(f"Claude вернул текст для {rel_path}: {text_content}")
+    if not tool_use_block:
+        content_types = [b.type for b in response.content] if response.content else []
+        logger.error(f"Claude вернул {content_types} вместо tool_use для {rel_path}. Текст: {text_content}")
         raise RuntimeError(f"Claude не вернул tool_use для {rel_path} для разбиения на блоки")
-    blocks = response.content[0].input["blocks"]
+    blocks = tool_use_block.input.get("blocks")
+    if not isinstance(blocks, list):
+        raise RuntimeError(f"Claude вернул некорректные blocks для {rel_path}: ожидается список, получен {type(blocks).__name__}")
     lines = file_text.count('\n') + 1
     logger.info(f"Разбито на {len(blocks)} блоков: {rel_path}")
     total = len(blocks)
@@ -107,14 +115,13 @@ def index_es_file(rel_path, new_hash):
         "created_at": now_iso,
         "updated_at": now_iso
     }
-    logger.info(f"Проанализировано {len(chunks)} чанков для {rel_path}")
     helpers.bulk(ES.options(request_timeout=120), chunks, chunk_size=2000, raise_on_error=True)
     helpers.bulk(ES.options(request_timeout=120), [manifest], chunk_size=1, raise_on_error=True)
     logger.info(f"➕ Added {rel_path} ({len(chunks)} chunks) in {time.time()-t0:.2f}s")
 
 def get_file_manifest():
-    query = {"_source": ["path","hash"], "query": {"match_all": {}}}
-    scroll = ES.search(index=ES_INDEX_FILE_MANIFEST, body=query, scroll="5m", size=1000)
+    query = {"_source": ["path","hash"], "query": {"match_all": {}}, "size": 1000}
+    scroll = ES.search(index=ES_INDEX_FILE_MANIFEST, body=query, scroll="5m")
     scroll_id = scroll.get("_scroll_id")
     hits = scroll["hits"]["hits"]
     result = {}
