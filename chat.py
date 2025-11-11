@@ -17,7 +17,7 @@ NAVIGATION = load_prompt("prompts/system_navigation.txt")
 SUMMARIZE = load_prompt("prompts/system_summarize.txt")
 TOOLS = [MAIN_SEARCH_TOOL, EXECUTE_COMMAND_TOOL, GET_CHUNKS_TOOL] + DB_QUERY_TOOLS
 MAX_TOOL_LOOPS = 8
-RAW_THRESHOLD = 3000
+RAW_THRESHOLD = 12000
 
 def canon_json(obj) -> str:
     return json.dumps(obj, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
@@ -125,9 +125,13 @@ def chat(message, history, history_pages, raw):
             text = "\n".join(text_chunks)
             raw.append(assistant_text(text))
             answers.append(text)
+            yield history + [[message, "\n".join(answers).strip()]], history_pages, raw, ""
         tool_uses = [b for b in response.content if b.type == "tool_use"]
         if not tool_uses:
             break
+        tool_names = ", ".join(tu.name for tu in tool_uses)
+        status = "\n".join(answers).strip() + f"\n\n🔧 {tool_names}..."
+        yield history + [[message, status]], history_pages, raw, ""
         last_tools = [tool_use_msg(tool_uses)]
         tool_results = []
         for tu in tool_uses:
@@ -148,7 +152,7 @@ def chat(message, history, history_pages, raw):
         if raw_size > RAW_THRESHOLD:
             history_pages.append(page_block_from_messages(raw))
             raw = []
-    return history + [[message, "\n".join(answers).strip()]], history_pages, raw, ""
+    yield history + [[message, "\n".join(answers).strip()]], history_pages, raw, ""
 
 with gr.Blocks(title="RAG Assistant") as demo:
     gr.Markdown("# 🤖 RAG Assistant\n**Claude** с инструментами для навигации по коду")
