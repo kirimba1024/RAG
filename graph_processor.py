@@ -29,8 +29,8 @@ def main():
         for hit in hits:
             source = hit["_source"]
             chunk_id = hit["_id"]
-            questions = source["graph_questions"]
-            answers = source["graph_answers"]
+            questions = source.get("graph_questions") or []
+            answers = source.get("graph_answers") or []
             chunk_questions[chunk_id] = questions
             chunk_answers[chunk_id] = answers
             for text in questions + answers:

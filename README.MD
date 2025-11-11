@@ -160,7 +160,7 @@ pip install -r requirements.txt -c constraints.txt
 
 3. **get_chunks** — запрос чанков по их ID для навигации по связанным чанкам
    ```python
-   chunk_ids=["path/to/file.py#0/5", "path/to/file.py#2/5"]
+   chunk_ids=["path/to/file.py#1/5", "path/to/file.py#3/5"]
    ```
    - Используется для навигации по графу связей между чанками через поля `links_out`/`links_in` (Q-A связанность)
    - Позволяет получать связанные чанки, найденные через main_search, для расширения контекста

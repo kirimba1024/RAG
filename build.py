@@ -81,8 +81,16 @@ def index_es_file(rel_path, new_hash):
     total = len(blocks)
     lines_list = file_text.split('\n')
     chunks = []
-    for i, block_def in enumerate(blocks, start=0):
+    for i, block_def in enumerate(blocks, start=1):
         start, end = block_def["start_line"], block_def["end_line"]
+        if start > end:
+            raise RuntimeError(f"Некорректные границы блока в {rel_path}: start_line={start} > end_line={end}")
+        if end > lines:
+            logger.warning(f"end_line={end} превышает количество строк={lines} в {rel_path}, обрезано до {lines}")
+            end = lines
+        if start < 1:
+            logger.warning(f"start_line={start} меньше 1 в {rel_path}, установлено 1")
+            start = 1
         block_text = '\n'.join(lines_list[start-1:end])
         chunks.append({
             "_op_type": "index",
@@ -106,6 +114,12 @@ def index_es_file(rel_path, new_hash):
             "llm_version": CLAUDE_MODEL,
             **block_def
         })
+    max_end = max((block_def["end_line"] for block_def in blocks), default=0)
+    coverage_pct = min(max_end, lines) / lines * 100 if lines > 0 else 0
+    total_covered = sum(block_def["end_line"] - block_def["start_line"] + 1 for block_def in blocks)
+    unique_covered = len(set().union(*(range(block_def["start_line"], block_def["end_line"] + 1) for block_def in blocks)))
+    overlap_pct = (total_covered - unique_covered) / lines * 100 if lines > 0 else 0
+    logger.info(f"Покрытие: {coverage_pct:.1f}%, перекрытие: {overlap_pct:.1f}%")
     manifest = {
         "_op_type": "index",
         "_index": ES_INDEX_FILE_MANIFEST,
