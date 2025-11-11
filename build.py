@@ -26,20 +26,23 @@ SPLIT_SYSTEM = load_prompt("prompts/system_split_blocks.txt")
 
 def delete_file_data(rel_path):
     query = {"term": {"path": rel_path}}
-    ES.options(request_timeout=120).delete_by_query(
+    chunks_result = ES.options(request_timeout=120).delete_by_query(
         index=ES_INDEX_CHUNKS,
         body={"query": query},
         conflicts="proceed",
         refresh=True,
         allow_no_indices=True
     )
-    ES.options(request_timeout=120).delete_by_query(
+    chunks_deleted = chunks_result.get("deleted", 0)
+    manifest_result = ES.options(request_timeout=120).delete_by_query(
         index=ES_INDEX_FILE_MANIFEST,
         body={"query": query},
         conflicts="proceed",
         refresh=True,
         allow_no_indices=True
     )
+    manifest_deleted = manifest_result.get("deleted", 0)
+    logger.info(f"🗑️  Deleted {rel_path}: {chunks_deleted} chunks, {manifest_deleted} manifest")
 
 def index_es_file(rel_path, new_hash):
     t0 = time.time()
@@ -68,16 +71,16 @@ def index_es_file(rel_path, new_hash):
     tool_use_block = next((b for b in response.content if b.type == "tool_use"), None)
     text_content = "\n".join(b.text for b in response.content if b.type == "text") if response.content else ""
     if text_content:
-        logger.info(f"Claude вернул текст для {rel_path}: {text_content}")
+        logger.info(f"💬 Claude returned text for {rel_path}: {text_content}")
     if not tool_use_block:
         content_types = [b.type for b in response.content] if response.content else []
-        logger.error(f"Claude вернул {content_types} вместо tool_use для {rel_path}. Текст: {text_content}")
+        logger.error(f"❌ Claude returned {content_types} instead of tool_use for {rel_path}. Text: {text_content}")
         raise RuntimeError(f"Claude не вернул tool_use для {rel_path} для разбиения на блоки")
     blocks = tool_use_block.input.get("blocks")
     if not isinstance(blocks, list):
         raise RuntimeError(f"Claude вернул некорректные blocks для {rel_path}: ожидается список, получен {type(blocks).__name__}")
     lines = file_text.count('\n') + 1
-    logger.info(f"Разбито на {len(blocks)} блоков: {rel_path}")
+    logger.info(f"📦 Split {rel_path} into {len(blocks)} blocks")
     total = len(blocks)
     lines_list = file_text.split('\n')
     chunks = []
@@ -86,10 +89,10 @@ def index_es_file(rel_path, new_hash):
         if start > end:
             raise RuntimeError(f"Некорректные границы блока в {rel_path}: start_line={start} > end_line={end}")
         if end > lines:
-            logger.warning(f"end_line={end} превышает количество строк={lines} в {rel_path}, обрезано до {lines}")
+            logger.warning(f"⚠️  end_line={end} exceeds file lines={lines} in {rel_path}, clamped to {lines}")
             end = lines
         if start < 1:
-            logger.warning(f"start_line={start} меньше 1 в {rel_path}, установлено 1")
+            logger.warning(f"⚠️  start_line={start} < 1 in {rel_path}, set to 1")
             start = 1
         block_text = '\n'.join(lines_list[start-1:end])
         chunks.append({
@@ -119,7 +122,7 @@ def index_es_file(rel_path, new_hash):
     total_covered = sum(block_def["end_line"] - block_def["start_line"] + 1 for block_def in blocks)
     unique_covered = len(set().union(*(range(block_def["start_line"], block_def["end_line"] + 1) for block_def in blocks)))
     overlap_pct = (total_covered - unique_covered) / lines * 100 if lines > 0 else 0
-    logger.info(f"Покрытие: {coverage_pct:.1f}%, перекрытие: {overlap_pct:.1f}%")
+    logger.info(f"📊 Coverage: {coverage_pct:.1f}%, overlap: {overlap_pct:.1f}%")
     manifest = {
         "_op_type": "index",
         "_index": ES_INDEX_FILE_MANIFEST,
@@ -146,9 +149,11 @@ def get_file_manifest():
         scroll = ES.scroll(scroll_id=scroll_id, scroll="5m")
         hits = scroll["hits"]["hits"]
     ES.clear_scroll(scroll_id=scroll_id)
+    logger.info(f"📋 Loaded {len(result)} file manifests from ES")
     return result
 
 def process_files():
+    logger.info(f"🔍 Scanning {REPOS_SAFE_ROOT} for files...")
     indexed_hash_by_file = get_file_manifest()
     processed_paths = set()
     for full in (f for f in REPOS_SAFE_ROOT.rglob('**/*') if f.is_file()):
@@ -171,17 +176,22 @@ def process_files():
                 delete_file_data(rel_path)
             index_es_file(rel_path, current_hash)
         except Exception as e:
-            logger.error(f"Failed to process file {rel_path}: {e}")
+            logger.error(f"❌ Failed to process file {rel_path}: {e}")
     for rel_path in indexed_hash_by_file.keys():
         if rel_path not in processed_paths:
             try:
                 delete_file_data(rel_path)
             except Exception as e:
-                logger.error(f"Failed to delete file {rel_path}: {e}")
+                logger.error(f"❌ Failed to delete file {rel_path}: {e}")
 
 def main():
+    logger.info(f"🚀 Starting build process...")
     try:
         process_files()
+        logger.info(f"✨ Build completed successfully")
+    except Exception as e:
+        logger.error(f"💥 Build failed: {e}")
+        raise
     finally:
         ES.close()
 
