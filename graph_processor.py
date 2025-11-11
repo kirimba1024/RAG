@@ -21,8 +21,8 @@ def main():
     chunk_questions = {}
     chunk_answers = {}
     qa_embeddings = {}
-    query = {"size": 100000, "_source": ["graph_questions", "graph_answers"], "query": {"match_all": {}}}
-    scroll = ES.search(index=ES_INDEX_CHUNKS, body=query, scroll="5m", size=1000)
+    query = {"size": 1000, "_source": ["graph_questions", "graph_answers"], "query": {"match_all": {}}}
+    scroll = ES.search(index=ES_INDEX_CHUNKS, body=query, scroll="5m")
     scroll_id = scroll.get("_scroll_id")
     hits = scroll["hits"]["hits"]
     while len(hits) > 0:
@@ -71,7 +71,7 @@ def main():
         for chunk_id in chunk_ids
     ]
     if actions:
-        bulk(ES, actions, chunk_size=1000, request_timeout=120)
+        bulk(ES.options(request_timeout=120), actions, chunk_size=1000)
         logger.info(f"Обновлено {len(actions)} чанков с полями links_in/links_out")
 
 if __name__ == "__main__":
