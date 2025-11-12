@@ -24,6 +24,86 @@ EMBEDDING = HuggingFaceEmbedding(EMBED_MODEL, normalize=True)
 
 SPLIT_SYSTEM = load_prompt("prompts/system_split_blocks.txt")
 
+def analyze_block_issues(blocks, total_lines, rel_path):
+    sorted_blocks = sorted(blocks, key=lambda b: (b["start_line"], b["end_line"]))
+    block_count = len(sorted_blocks)
+    unsorted = sorted_blocks != blocks
+    out_of_bounds_start = sum(b["start_line"] < 1 for b in blocks)
+    out_of_bounds_end = sum(b["end_line"] > total_lines for b in blocks)
+    gaps, overlaps = [], []
+    previous_end = 0
+    max_end = 0
+    for b in sorted_blocks:
+        s, e = b["start_line"], b["end_line"]
+        if s > previous_end + 1:
+            gaps.append((previous_end + 1, s - 1))
+        if s <= previous_end:
+            overlaps.append((s, previous_end))
+        if e > max_end:
+            max_end = e
+        if e > previous_end:
+            previous_end = e
+    if max_end < total_lines:
+        gaps.append((max_end + 1, total_lines))
+    gap_lines = sum(b - a + 1 for a, b in gaps)
+    overlap_lines = sum(b - a + 1 for a, b in overlaps)
+    raw_coverage_pct = 0.0 if total_lines == 0 else min(max_end, total_lines) / total_lines * 100.0
+    gaps_preview = ", ".join(f"{a}-{b}" for a, b in gaps[:3]) + ("…" if len(gaps) > 3 else "")
+    overlaps_preview = ", ".join(f"{a}-{b}" for a, b in overlaps[:3]) + ("…" if len(overlaps) > 3 else "")
+    logger.info(f"🧪 {rel_path}: blocks={block_count}, unsorted={'yes' if unsorted else 'no'}, "
+                f"oob=({out_of_bounds_start} start,{out_of_bounds_end} end), "
+                f"gaps={len(gaps)}[{gap_lines}] {gaps_preview}, "
+                f"overlaps={len(overlaps)}[{overlap_lines}] {overlaps_preview}, "
+                f"raw={raw_coverage_pct:.1f}%")
+
+def normalize_blocks(blocks, total_lines, rel_path):
+    sorted_blocks = sorted(blocks, key=lambda b: (b["start_line"], b["end_line"]))
+    normalized_blocks = []
+    previous_end_line = 0
+    for block in sorted_blocks:
+        raw_start_line = block["start_line"]
+        raw_end_line = block["end_line"]
+        if raw_start_line < 1:
+            logger.warning(f"⚠️  start_line={raw_start_line} < 1 in {rel_path}, clamped to 1")
+        if raw_end_line > total_lines:
+            logger.warning(f"⚠️  end_line={raw_end_line} exceeds file lines={total_lines} in {rel_path}, clamped to {total_lines}")
+        start_line = max(1, raw_start_line)
+        end_line = min(raw_end_line, total_lines)
+        if start_line > end_line:
+            continue
+        if not normalized_blocks:
+            start_line = 1
+        else:
+            if start_line > previous_end_line + 1:
+                gap_start = previous_end_line + 1
+                gap_end = start_line - 1
+                midpoint_line = (previous_end_line + start_line) // 2
+                normalized_blocks[-1]["end_line"] = midpoint_line
+                start_line = midpoint_line + 1
+                logger.warning(f"⚠️  Gap {gap_start}-{gap_end} ({gap_end - gap_start + 1} lines) between blocks in {rel_path}, extended to midpoint")
+            elif start_line <= previous_end_line:
+                start_line = previous_end_line + 1
+        if start_line > end_line:
+            continue
+        new_block = dict(block)
+        new_block["start_line"] = start_line
+        new_block["end_line"] = end_line
+        normalized_blocks.append(new_block)
+        previous_end_line = end_line
+    if not normalized_blocks:
+        return [{"start_line": 1, "end_line": total_lines, "title": "logic", "kind": "logic_block", "bm25_boost_terms": [], "symbols": [], "graph_questions": [], "graph_answers": []}]
+    if normalized_blocks[-1]["end_line"] < total_lines:
+        missing_start = normalized_blocks[-1]["end_line"] + 1
+        logger.warning(f"⚠️  Last block ends at line {normalized_blocks[-1]['end_line']}, file has {total_lines} lines. Extending last block to cover {missing_start}-{total_lines}")
+        normalized_blocks[-1]["end_line"] = total_lines
+    covered_lines = 0
+    for b in normalized_blocks:
+        covered_lines += b["end_line"] - b["start_line"] + 1
+    coverage_pct = 0.0 if total_lines == 0 else min(100.0, covered_lines / total_lines * 100.0)
+    logger.info(f"📦 Split {rel_path} into {len(normalized_blocks)} blocks")
+    logger.info(f"📊 Coverage: {coverage_pct:.1f}%, overlap: 0.0%")
+    return normalized_blocks
+
 def delete_file_data(rel_path):
     query = {"term": {"path": rel_path}}
     chunks_result = ES.options(request_timeout=120).delete_by_query(
@@ -80,21 +160,15 @@ def index_es_file(rel_path, new_hash):
     if not isinstance(blocks, list):
         raise RuntimeError(f"Claude вернул некорректные blocks для {rel_path}: ожидается список, получен {type(blocks).__name__}")
     lines = file_text.count('\n') + 1
-    logger.info(f"📦 Split {rel_path} into {len(blocks)} blocks")
+    analyze_block_issues(blocks, lines, rel_path)
+    blocks = normalize_blocks(blocks, lines, rel_path)
     total = len(blocks)
     lines_list = file_text.split('\n')
     chunks = []
     for i, block_def in enumerate(blocks, start=1):
-        start, end = block_def["start_line"], block_def["end_line"]
-        if start > end:
-            raise RuntimeError(f"Некорректные границы блока в {rel_path}: start_line={start} > end_line={end}")
-        if end > lines:
-            logger.warning(f"⚠️  end_line={end} exceeds file lines={lines} in {rel_path}, clamped to {lines}")
-            end = lines
-        if start < 1:
-            logger.warning(f"⚠️  start_line={start} < 1 in {rel_path}, set to 1")
-            start = 1
-        block_text = '\n'.join(lines_list[start-1:end])
+        start_line = block_def["start_line"]
+        end_line = block_def["end_line"]
+        block_text = '\n'.join(lines_list[start_line-1:end_line])
         chunks.append({
             "_op_type": "index",
             "_index": ES_INDEX_CHUNKS,
@@ -117,12 +191,6 @@ def index_es_file(rel_path, new_hash):
             "llm_version": CLAUDE_MODEL,
             **block_def
         })
-    max_end = max((block_def["end_line"] for block_def in blocks), default=0)
-    coverage_pct = min(max_end, lines) / lines * 100 if lines > 0 else 0
-    total_covered = sum(block_def["end_line"] - block_def["start_line"] + 1 for block_def in blocks)
-    unique_covered = len(set().union(*(range(block_def["start_line"], block_def["end_line"] + 1) for block_def in blocks)))
-    overlap_pct = (total_covered - unique_covered) / lines * 100 if lines > 0 else 0
-    logger.info(f"📊 Coverage: {coverage_pct:.1f}%, overlap: {overlap_pct:.1f}%")
     manifest = {
         "_op_type": "index",
         "_index": ES_INDEX_FILE_MANIFEST,
