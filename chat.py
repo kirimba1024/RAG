@@ -1,8 +1,9 @@
 import gradio as gr
 import json
 from pathlib import Path
+from typing import Literal, Sequence
 from anthropic import Anthropic
-from anthropic.types import TextBlockParam, DocumentBlockParam, MessageParam, ToolResultBlockParam
+from anthropic.types import TextBlockParam, DocumentBlockParam, MessageParam, ToolResultBlockParam, PlainTextSourceParam
 
 from utils import CLAUDE_MODEL, ANTHROPIC_API_KEY, load_prompt, setup_logging
 from tools import MAIN_SEARCH_TOOL, EXECUTE_COMMAND_TOOL, GET_CHUNKS_TOOL, DB_QUERY_TOOLS
@@ -31,8 +32,9 @@ def text_block_cached(value: str) -> TextBlockParam:
 def doc_block(doc_data) -> DocumentBlockParam:
     is_json = isinstance(doc_data, (dict, list))
     data = canon_json(doc_data) if is_json else str(doc_data)
-    media = "application/json" if is_json else "text/plain"
-    return {"type": "document", "source": {"type": "text", "media_type": media, "data": data}}
+    media_type: Literal["application/json", "text/plain"] = "application/json" if is_json else "text/plain"
+    source: PlainTextSourceParam = {"type": "text", "media_type": media_type, "data": data}
+    return {"type": "document", "source": source}
 
 def nav_block(text: str) -> TextBlockParam:
     return text_block_cached(canon_json({"nav": text}))
@@ -43,7 +45,7 @@ def summarize_block(text: str) -> TextBlockParam:
 def page_block_from_messages(messages_list: list) -> TextBlockParam:
     return text_block_cached(canon_json(messages_list))
 
-def msg(role: str, content) -> MessageParam:
+def msg(role: Literal["user", "assistant"], content) -> MessageParam:
     if isinstance(content, str):
         content = [text_block(content)]
     elif isinstance(content, dict):
@@ -56,7 +58,7 @@ def user_text(text: str) -> MessageParam:
 def assistant_text(text: str) -> MessageParam:
     return msg("assistant", text)
 
-def tool_use_msg(tool_uses) -> MessageParam:
+def tool_use_msg(tool_uses: Sequence) -> MessageParam:
     return msg("assistant", [
         {"type": "tool_use", "id": tu.id, "name": tu.name, "input": tu.input}
         for tu in tool_uses
@@ -168,7 +170,7 @@ with gr.Blocks(title="RAG Assistant") as demo:
     )
 
     with gr.Row():
-        msg = gr.Textbox(
+        message_input = gr.Textbox(
             placeholder="Задайте вопрос...", show_label=False, container=False, scale=7
         )
         submit = gr.Button("Отправить", variant="primary", scale=1)
@@ -179,16 +181,16 @@ with gr.Blocks(title="RAG Assistant") as demo:
         examples=[
             "Как сущности есть в этом проекте?",
             "Объясни, как работает frontend?",
-            "Найди люьбую сущность из проекта, а потом все связанные с ней места кода.",
+            "Найди любую сущность из проекта, а потом все связанные с ней места кода.",
         ],
-        inputs=msg,
+        inputs=message_input,
         label="💡 Примеры вопросов",
     )
 
-    msg.submit(chat, inputs=[msg, chatbot, history_pages_state, raw_state], outputs=[chatbot, history_pages_state, raw_state, msg])
-    submit.click(chat, inputs=[msg, chatbot, history_pages_state, raw_state], outputs=[chatbot, history_pages_state, raw_state, msg])
+    message_input.submit(chat, inputs=[message_input, chatbot, history_pages_state, raw_state], outputs=[chatbot, history_pages_state, raw_state, message_input])
+    submit.click(chat, inputs=[message_input, chatbot, history_pages_state, raw_state], outputs=[chatbot, history_pages_state, raw_state, message_input])
     summarize_btn.click(summarize_dialog, inputs=[chatbot, history_pages_state, raw_state], outputs=[chatbot, history_pages_state, raw_state])
-    clear.click(lambda: ([], [], [], ""), outputs=[chatbot, history_pages_state, raw_state, msg])
+    clear.click(lambda: ([], [], [], ""), outputs=[chatbot, history_pages_state, raw_state, message_input])
 
 if __name__ == "__main__":
     demo.launch(server_name="0.0.0.0", server_port=7860, share=False)
