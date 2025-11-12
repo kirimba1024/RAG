@@ -122,11 +122,13 @@ def short_hash(s: str) -> str:
     return base64.urlsafe_b64encode(d).decode().rstrip("=")
 
 def to_posix(p: str | Path) -> str:
-    s = str(p).replace("\\", "/")
+    s = (str(p) or "").strip().replace("\\", "/")
+    while s.startswith("./") or s.startswith("../"):
+        s = s[2:] if s.startswith("./") else s[3:]
+    while s.startswith("/"):
+        s = s[1:]
     while "//" in s:
         s = s.replace("//", "/")
-    if s.startswith("./"):
-        s = s[2:]
     return s
 
 def clean_text(text: str) -> str:

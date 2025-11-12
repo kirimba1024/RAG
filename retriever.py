@@ -8,7 +8,7 @@ from llama_index.core import Settings
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.postprocessor.sbert_rerank import SentenceTransformerRerank
 
-from utils import ES_URL, ES_INDEX_CHUNKS, EMBED_MODEL, RERANK_MODEL, setup_logging
+from utils import ES_URL, ES_INDEX_CHUNKS, EMBED_MODEL, RERANK_MODEL, setup_logging, to_posix
 
 logger = setup_logging(Path(__file__).stem)
 
@@ -33,7 +33,8 @@ def rrf_fusion(ranked_lists, k=60):
 def retrieve_fusion_nodes(question: str, path_prefix: str, top_n: int, symbols, use_reranker) -> List[BaseNode]:
     shortlist = max(6 * top_n, 32) if use_reranker else top_n
     size = shortlist
-    path_filter = [{"prefix": {"path": (path_prefix or "").lstrip("/").lstrip(".")}}] if path_prefix else []
+    normalized = to_posix(path_prefix)
+    path_filter = [{"prefix": {"path": normalized}}] if normalized else []
     should_clauses = [{"multi_match": {"query": question, "fields": ["text^1.0", "text.ru^1.3", "text.en^1.2"]}}]
     query_terms = [t.lower() for t in question.split() if t.isalnum()]
     if query_terms:
