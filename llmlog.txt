@@ -429,3 +429,10 @@
 - Решение: переименована переменная msg в message_input во всех местах использования (Textbox, Examples, submit, clear)
 - Типизация: добавлен Literal["user", "assistant"] для role в функции msg(), PlainTextSourceParam для source в doc_block(), Literal["text/plain"] для media_type
 - Результат: функция msg() теперь доступна для создания сообщений, типизация соответствует требованиям API, интерфейс работает корректно
+
+2025-11-12: Исправление ошибок API и упрощение формата Chatbot в chat.py
+- Ошибка API: media_type должен быть строго 'text/plain' (не 'application/json'), исправлено в doc_block()
+- Переход на type="messages": Chatbot переведён с устаревшего type="tuples" на type="messages" для совместимости с новыми версиями Gradio
+- Упрощение кода: убрана функция msg_to_gradio(), в answers хранятся готовые объекты для Gradio {"role": "assistant", "content": text}, для raw создаются MessageParam через assistant_text()
+- Исправление опечатки: "люьбую" → "любую" в примерах вопросов
+- Результат: код стал лаконичнее, без лишних преобразований, данные хранятся в нужном формате, преобразование только для raw (API)

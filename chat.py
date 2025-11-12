@@ -32,7 +32,7 @@ def text_block_cached(value: str) -> TextBlockParam:
 def doc_block(doc_data) -> DocumentBlockParam:
     is_json = isinstance(doc_data, (dict, list))
     data = canon_json(doc_data) if is_json else str(doc_data)
-    media_type: Literal["application/json", "text/plain"] = "application/json" if is_json else "text/plain"
+    media_type: Literal["text/plain"] = "text/plain"
     source: PlainTextSourceParam = {"type": "text", "media_type": media_type, "data": data}
     return {"type": "document", "source": source}
 
@@ -126,14 +126,14 @@ def chat(message, history, history_pages, raw):
         if text_chunks:
             text = "\n".join(text_chunks)
             raw.append(assistant_text(text))
-            answers.append(text)
-            yield history + [[message, "\n".join(answers).strip()]], history_pages, raw, ""
+            answers.append({"role": "assistant", "content": text})
+            yield history + [{"role": "user", "content": message}] + answers, history_pages, raw, ""
         tool_uses = [b for b in response.content if b.type == "tool_use"]
         if not tool_uses:
             break
         tool_names = ", ".join(tu.name for tu in tool_uses)
-        status = "\n".join(answers).strip() + f"\n\n🔧 {tool_names}..."
-        yield history + [[message, status]], history_pages, raw, ""
+        status = f"🔧 {tool_names}..."
+        yield history + [{"role": "user", "content": message}] + answers + [{"role": "assistant", "content": status}], history_pages, raw, ""
         last_tools = [tool_use_msg(tool_uses)]
         tool_results = []
         for tu in tool_uses:
@@ -154,7 +154,7 @@ def chat(message, history, history_pages, raw):
         if raw_size > RAW_THRESHOLD:
             history_pages.append(page_block_from_messages(raw))
             raw = []
-    yield history + [[message, "\n".join(answers).strip()]], history_pages, raw, ""
+    yield history + [{"role": "user", "content": message}] + answers, history_pages, raw, ""
 
 with gr.Blocks(title="RAG Assistant") as demo:
     gr.Markdown("# 🤖 RAG Assistant\n**Claude** с инструментами для навигации по коду")
@@ -165,7 +165,7 @@ with gr.Blocks(title="RAG Assistant") as demo:
         height=600,
         placeholder="Задавайте вопросы по вашей кодовой базе",
         show_label=False,
-        type="tuples",
+        type="messages",
         sanitize_html=False,
     )
 
