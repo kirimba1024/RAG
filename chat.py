@@ -21,6 +21,18 @@ TOOLS = [MAIN_SEARCH_TOOL, EXECUTE_COMMAND_TOOL, GET_CHUNKS_TOOL] + DB_QUERY_TOO
 MAX_TOOL_LOOPS = 8
 RAW_THRESHOLD = 12000
 
+TOKEN_STATS = {"input_base": 0, "cache_write": 0, "cache_read": 0, "output": 0}
+
+def track_tokens(response):
+    if response.usage:
+        cache_read = getattr(response.usage, "cache_read_input_tokens", 0) or 0
+        cache_creation = getattr(response.usage, "cache_creation_input_tokens", 0) or 0
+        TOKEN_STATS["input_base"] += response.usage.input_tokens
+        TOKEN_STATS["cache_write"] += cache_creation
+        TOKEN_STATS["cache_read"] += cache_read
+        TOKEN_STATS["output"] += response.usage.output_tokens
+
+
 def canon_json(obj) -> str:
     return json.dumps(obj, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
 
@@ -116,6 +128,7 @@ def summarize_dialog(history, history_pages, raw):
         messages=all_messages,
         max_tokens=4096,
     )
+    track_tokens(response)
     text_chunks = [b.text for b in response.content if b.type == "text"]
     summary_text = "\n".join(text_chunks).strip()
     summary_page = page_block_from_messages([assistant_text(summary_text)])
@@ -142,6 +155,7 @@ def chat(message, history, history_pages, raw):
             tools=TOOLS,
             max_tokens=4096,
         )
+        track_tokens(response)
         text_chunks = [b.text for b in response.content if b.type == "text"]
         if text_chunks:
             text = "\n".join(text_chunks)
@@ -195,6 +209,17 @@ with gr.Blocks(title="RAG Assistant") as demo:
         sanitize_html=False,
     )
 
+    def update_tokens():
+        if TOKEN_STATS["input_base"] == 0 and TOKEN_STATS["output"] == 0:
+            return "Токены: 0"
+        input_total = TOKEN_STATS["input_base"] + TOKEN_STATS["cache_write"] + TOKEN_STATS["cache_read"]
+        paid_equiv = TOKEN_STATS["input_base"] + 1.25 * TOKEN_STATS["cache_write"] + 0.1 * TOKEN_STATS["cache_read"]
+        total_equiv = paid_equiv + TOKEN_STATS["output"]
+        saved_equiv = input_total - paid_equiv
+        return f"Токены: {total_equiv:,.0f} (экономия: {saved_equiv:,.0f})<br>Сырые: base={TOKEN_STATS['input_base']:,}, write={TOKEN_STATS['cache_write']:,}, read={TOKEN_STATS['cache_read']:,}, output={TOKEN_STATS['output']:,}"
+
+    token_display = gr.Markdown(update_tokens())
+
     with gr.Row():
         message_input = gr.Textbox(
             placeholder="Задайте вопрос...", show_label=False, container=False, scale=7
@@ -217,6 +242,9 @@ with gr.Blocks(title="RAG Assistant") as demo:
     submit.click(chat, inputs=[message_input, chatbot, history_pages_state, raw_state], outputs=[chatbot, history_pages_state, raw_state, message_input])
     summarize_btn.click(summarize_dialog, inputs=[chatbot, history_pages_state, raw_state], outputs=[chatbot, history_pages_state, raw_state])
     clear.click(lambda: ([], [], [], ""), outputs=[chatbot, history_pages_state, raw_state, message_input])
+
+    timer = gr.Timer(value=1, active=True)
+    timer.tick(update_tokens, outputs=[token_display])
 
 if __name__ == "__main__":
     demo.launch(server_name="0.0.0.0", server_port=7860, share=False)

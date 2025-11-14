@@ -33,7 +33,8 @@ def rrf_fusion(ranked_lists, k=60):
 def retrieve_fusion_nodes(question: str, path_prefix: str, top_n: int, symbols, use_reranker) -> List[BaseNode]:
     shortlist = max(6 * top_n, 32) if use_reranker else top_n
     size = shortlist
-    normalized = to_posix(path_prefix)
+    cleaned = path_prefix.replace("*", "") if path_prefix else ""
+    normalized = to_posix(cleaned) if cleaned else ""
     path_filter = [{"prefix": {"path": normalized}}] if normalized else []
     should_clauses = [{"multi_match": {"query": question, "fields": ["text^1.0", "text.ru^1.3", "text.en^1.2"]}}]
     query_terms = [t.lower() for t in question.split() if t.isalnum()]
