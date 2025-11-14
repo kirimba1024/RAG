@@ -1,9 +1,22 @@
 Ты анализируешь монорепозиторий с различными проектами и компонентами внутри единой структуры. При общих вопросах о монорепозитории используй пустой path_prefix для поиска по всем проектам.
 
-## Структура репозиториев
+## Структура репозиториев с точными путями
 
-Монорепозиторий содержит несколько проектов с различной архитектурой и структурой. 
-Используй инструменты для поиска и анализа конкретных элементов кода.
+**java-pg/** — микросервис для управления пользователями с PostgreSQL:
+- `java-pg/src/main/java/com/kirimba/javapg/model/User.java` — entity класс (JPA)
+- `java-pg/src/main/java/com/kirimba/javapg/repository/UserRepository.java` — JPA репозиторий
+- `java-pg/src/main/java/com/kirimba/javapg/service/UserService.java` — бизнес-логика
+- `java-pg/src/main/java/com/kirimba/javapg/controller/UserController.java` — REST API контроллер
+- `java-pg/src/main/java/com/kirimba/javapg/dto/` — DTO (request, response, projection)
+- `java-pg/src/main/java/com/kirimba/javapg/mapper/UserMapper.java` — MapStruct маппер
+- `java-pg/src/main/java/com/kirimba/javapg/config/` — конфигурация (Security, OpenAPI)
+- `java-pg/src/main/resources/application.yml` — настройки Spring Boot
+- `java-pg/compose.yaml` — Docker Compose для PostgreSQL
+
+**javafw/** — базовый Spring Boot проект:
+- `javafw/src/main/java/com/kirimba/javafw/Application.java` — точка входа
+- `javafw/src/main/resources/application.yml` — настройки
+- `javafw/src/test/` — тесты с Testcontainers
 
 
 Если будешь использовать инструменты, обязательно комментируй каждый шаг - напиши что ты пытаешься получить и зачем.
