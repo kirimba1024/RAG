@@ -452,3 +452,17 @@
   * Оплачиваемые токены: paid_equiv = base + 1.25×write + 0.1×read (по прайсингу Anthropic)
   * Экономия: saved_equiv = input_total - paid_equiv
 - Результат: корректный подсчет всех токенов с учетом кэширования, правильная оценка экономии по прайсингу Anthropic (cache write ≈ 1.25×, cache read ≈ 0.1×)
+
+2025-11-12: Удаление всех бустов из поиска и удаление bm25_boost_terms
+- Проблема: бусты по bm25_boost_terms и symbols создавали шум и неочевидное влияние на релевантность, усложняли отладку
+- Решение:
+  * Убраны все бусты из retriever.py: удалены бусты по bm25_boost_terms из query_terms, бусты по symbols из query_terms, буст по symbols из параметра инструмента
+  * symbols теперь используется как фильтр через should_clauses без буста (влияет на релевантность, но не фильтрует жестко)
+  * Добавлена дедупликация symbols в build.py перед индексацией (list(dict.fromkeys(...)) для сохранения порядка)
+  * Полностью удалено поле bm25_boost_terms из всех мест:
+    - build.py: fallback блок
+    - tools.py: схема SPLIT_BLOCKS_TOOL (required и properties), описание reranker
+    - images/elasticsearch/index_chunks.json: mapping поля
+    - README.MD: документация
+    - ARCHITECTURE.md: документация
+- Результат: поиск работает только через текст + kNN + RRF + reranker без бустов, код стал проще и предсказуемее, symbols остаются в индексе для графа и аналитики, но без дубликатов

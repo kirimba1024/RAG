@@ -148,8 +148,8 @@ pip install -r requirements.txt -c constraints.txt
   ```python
   question="Где метод аутентификации?", path_prefix="src", top_n=10, symbols=["UserService"], use_reranker=True
   ```
-  - `symbols` (опционально): список идентификаторов для дополнительного буста поиска
-  - `use_reranker` (опционально): булево значение, включает reranker (true по умолчанию); reranker учитывает только текст чанков, поэтому при критичных совпадениях по symbols/bm25_boost_terms можно отключить
+  - `symbols` (опционально): список идентификаторов для уточнения поиска
+  - `use_reranker` (опционально): булево значение, включает reranker (true по умолчанию); reranker работает только с семантическим сходством текста и не учитывает метаданные (symbols)
 
 2. **execute_command** — безопасное выполнение команд в Docker sandbox
    ```bash
@@ -213,12 +213,12 @@ LLM обрабатывает любой текстовый файл одинак
    - Сканирование `repos_safe/` для получения всех файлов
    
 2. **Семантическое разбиение и извлечение метаданных:**
-   - LLM (Claude) разбивает файл на логические блоки и сразу извлекает для каждого блока: bm25_boost_terms, symbols, graph_questions, graph_answers
+   - LLM (Claude) разбивает файл на логические блоки и сразу извлекает для каждого блока: symbols, graph_questions, graph_answers
    - Whole-блоки не создаются и не эмбеддятся (исключены из индексации)
    - Манифест файла создаётся в отдельном индексе `file_manifest` с полями `path` и `hash`
    - Пер‑запросное prompt caching (ephemeral) для системного промпта и текста файла
    - Генерация embeddings (BAAI/bge-m3)
-   - Bulk insert в ES (индекс `chunks`) c полями: `path`, `hash`, `text`, `embedding`, `chunk_id`, `chunks`, `start_line`, `end_line`, `kind`, `lang`, `size` (размер чанка в байтах), `file_size` (размер файла в байтах), `file_lines` (общее количество строк в файле), `bm25_boost_terms`, `symbols`, `graph_questions`, `graph_answers`
+   - Bulk insert в ES (индекс `chunks`) c полями: `path`, `hash`, `text`, `embedding`, `chunk_id`, `chunks`, `start_line`, `end_line`, `kind`, `lang`, `size` (размер чанка в байтах), `file_size` (размер файла в байтах), `file_lines` (общее количество строк в файле), `symbols`, `graph_questions`, `graph_answers`
    
 3. **Инкрементальность:**
    - Хэш каждого файла по содержимому (`git_blob_oid`)
@@ -251,7 +251,7 @@ LLM обрабатывает любой текстовый файл одинак
 
 ### Поиск (retriever.py)
 1. Два отдельных запроса ES с RRF-слиянием:
-   - BM25 запрос: полнотекстовый поиск с бустами (ru^1.3, en^1.2), бустинг по bm25_boost_terms и symbols из запроса
+   - BM25 запрос: полнотекстовый поиск с бустами (ru^1.3, en^1.2)
    - kNN запрос: векторный поиск по embeddings (BAAI/bge-m3)
    - Размер кандидатов зависит от top_n: size = shortlist, num_candidates = shortlist * 4, где shortlist = max(6 * top_n, 32) при use_reranker или top_n без reranker
    - Фильтрация по path_prefix как bool.filter (не скорер) для уменьшения кандидатов и ускорения

@@ -37,14 +37,8 @@ def retrieve_fusion_nodes(question: str, path_prefix: str, top_n: int, symbols, 
     normalized = to_posix(cleaned) if cleaned else ""
     path_filter = [{"prefix": {"path": normalized}}] if normalized else []
     should_clauses = [{"multi_match": {"query": question, "fields": ["text^1.0", "text.ru^1.3", "text.en^1.2"]}}]
-    query_terms = [t.lower() for t in question.split() if t.isalnum()]
-    if query_terms:
-        should_clauses.extend([
-            {"terms": {"bm25_boost_terms": query_terms, "boost": 1.5}},
-            {"terms": {"symbols": query_terms, "boost": 2.0}}
-        ])
     if symbols:
-        should_clauses.append({"terms": {"symbols": [s.lower() for s in symbols if s], "boost": 2.5}})
+        should_clauses.append({"terms": {"symbols": [s.lower() for s in symbols if s]}})
     bm25_response = ES.search(
         index=ES_INDEX_CHUNKS,
         body={"size": size, "query": {"bool": {"filter": path_filter, "should": should_clauses, "minimum_should_match": 1}}, "_source": {"includes": SOURCE_FIELDS}}

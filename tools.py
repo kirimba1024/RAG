@@ -29,7 +29,7 @@ MAIN_SEARCH_TOOL = {
                 "type": "boolean",
                 "description": (
                     "использовать reranker для улучшения результатов (по умолчанию: true). "
-                    "Reranker работает только с семантическим сходством текста и не учитывает метаданные (symbols, bm25_boost_terms). "
+                    "Reranker работает только с семантическим сходством текста и не учитывает метаданные (symbols). "
                     "Может изменить порядок важных чанков, поднятых ES благодаря бустам. "
                     "Рекомендуется отключать, когда важны точные совпадения по символам или терминам."
                 )
@@ -120,14 +120,13 @@ SPLIT_BLOCKS_TOOL = {
                     "additionalProperties": False,
                     "required": [
                         "start_line", "end_line", "title", "kind",
-                        "bm25_boost_terms", "symbols", "graph_questions", "graph_answers"
+                        "symbols", "graph_questions", "graph_answers"
                     ],
                     "properties": {
                         "start_line": {"type": "integer", "minimum": 1, "description": "первая строка блока (1-индексация)"},
                         "end_line":   {"type": "integer", "minimum": 1, "description": "последняя строка блока включительно (1-индексация)"},
                         "title":      {"type": "string",  "minLength": 1, "maxLength": 120, "description": "краткое имя: function: foo, class: Bar, section: Config"},
                         "kind":       {"type": "string",  "minLength": 1, "maxLength": 32,  "description": "section, paragraph, list, list_item, table, code, config, class, function; при сомнении — logic_block"},
-                        "bm25_boost_terms": {"type": "array", "items": {"type": "string"}, "maxItems": 12, "description": "идентификаторы/таблицы/эндпоинты/ключи конфигов"},
                         "symbols":          {"type": "array", "items": {"type": "string"}, "maxItems": 20, "description": "каноничные имена сущностей (классы, функции, константы, env-ключи)"},
                         "graph_questions":  {"type": "array", "items": {"type": "string"}, "minItems": 2, "maxItems": 5, "description": "кто вызывает, где определяется, что обновляет, откуда данные"},
                         "graph_answers":    {"type": "array", "items": {"type": "string"}, "minItems": 2, "maxItems": 5, "description": "здесь определяется/обновляет/вызывает/реализует"}

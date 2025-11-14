@@ -122,14 +122,13 @@
    - Фильтрация по path_prefix (bool.filter, не скорер) для уменьшения кандидатов
    - RRF всегда включён для объединения результатов BM25 и kNN
    - Reranking через cross-encoder (опционально, когда use_reranker=true)
-   - Минимальная схема метаданных: bm25_boost_terms, symbols, graph_questions, graph_answers
-   - Бустинг по bm25_boost_terms из самих чанков
+   - Минимальная схема метаданных: symbols, graph_questions, graph_answers
    - Индекс `chunks` для чанков; отдельный индекс `file_manifest` для манифестов файлов (path + hash, не используется в поиске)
 
 2. **LLM-обогащение чанков** (build.py) — единый процесс
-   - Claude разбивает файл на логические блоки через вызов инструмента split_blocks и сразу извлекает для каждого блока метаданные: bm25_boost_terms, symbols, graph_questions, graph_answers
+   - Claude разбивает файл на логические блоки через вызов инструмента split_blocks и сразу извлекает для каждого блока метаданные: symbols, graph_questions, graph_answers
    - Проверка наличия tool_use в ответе Claude перед обработкой
-   - Каждый блок: `start_line`, `end_line`, `title`, `kind`, `bm25_boost_terms`, `symbols`, `graph_questions`, `graph_answers`
+   - Каждый блок: `start_line`, `end_line`, `title`, `kind`, `symbols`, `graph_questions`, `graph_answers`
    - Универсальный `kind` (не только function/class, но и section, table, config, paragraph и т.д.)
    - Работает для любого контента: код, HTML, таблицы, XML, YAML, документы
    - Все поля извлекаются за один вызов LLM вместе с разбиением на блоки
@@ -165,8 +164,8 @@
    - Суммаризация диалога: кнопка "Суммаризировать" позволяет сжать весь накопленный контекст в одну страницу через промпт system_summarize.txt
    - **Инструменты:**
      - **main_search**: гибридный поиск (kNN+BM25) по chunks кода
-       - `symbols`: список идентификаторов для дополнительного буста поиска (совпадает с метаданными chunks.symbols)
-       - `use_reranker`: булево значение для включения reranker (по умолчанию true); reranker учитывает только текст, поэтому при критичных совпадениях по symbols/bm25_boost_terms флаг можно отключать
+       - `symbols`: список идентификаторов для уточнения поиска (совпадает с метаданными chunks.symbols)
+       - `use_reranker`: булево значение для включения reranker (по умолчанию true); reranker работает только с семантическим сходством текста и не учитывает метаданные (symbols)
      - **execute_command**: безопасное выполнение команд в Docker sandbox
      - **get_chunks**: запрос чанков по их ID для навигации по связанным чанкам через поля links_out/links_in (графовая Q-A связанность)
      - **db_query** (динамические тулы): выполнение SQL запросов к базам данных через NL2SQL
@@ -178,7 +177,7 @@
 
 1. **Единый индекс без фильтрации** — LLM сама разберётся в структуре через метаданные
 2. **Универсальность** — работает для любого контента (код, HTML, таблицы, XML, YAML, документы)
-3. **Минимальные метаданные** — только bm25_boost_terms, symbols, graph_questions, graph_answers
+3. **Минимальные метаданные** — только symbols, graph_questions, graph_answers
 4. **Граф связей** — пост-процессинг обогащает чанки связями на основе Q-A (graph_questions/graph_answers), улучшая recall
 5. **Семантическое разбиение** — не фиксированный размер, а логические блоки
 6. **Минимализм** — только необходимое, без избыточности
@@ -278,14 +277,14 @@
 3. **Качество**
    - LLM-обогащённые метаданные дают точные сигналы для поиска
    - Семантические блоки вместо фиксированного размера
-   - Минимальный набор полей: bm25_boost_terms, symbols, graph_questions, graph_answers
+   - Минимальный набор полей: symbols, graph_questions, graph_answers
    - Граф связей через Q-A (graph_questions/graph_answers)
    - Reranking улучшает precision
 
 4. **Гибкость**
    - Единый индекс работает для всех типов файлов (код, HTML, таблицы, XML, YAML, документы)
    - Универсальный `kind` для любого контента (section, table, config, paragraph, function, class и т.д.)
-   - Минимальные метаданные: bm25_boost_terms для поиска, symbols для связности, graph_questions/graph_answers для графа
+   - Минимальные метаданные: symbols для связности, graph_questions/graph_answers для графа
    - Docker Sandbox даёт возможность выполнять любые команды анализа
 
 5. **Масштабируемость**
@@ -306,7 +305,7 @@
    - Универсальный `kind` работает для любого контента
 
 3. **Размер индекса ES**
-   - Решение: минимальный набор полей (bm25_boost_terms, symbols, graph_questions, graph_answers)
+   - Решение: минимальный набор полей (symbols, graph_questions, graph_answers)
    - Компрессия embeddings (нормализация)
    - Поля с `index: false` для больших текстов (links_out, links_in)
 
@@ -327,7 +326,7 @@
 - **Минимальное LLM-обогащение** — один вызов на файл, извлечение только необходимых полей
 - **Единый процесс** (разбиение + извлечение метаданных за один вызов LLM) для точного семантического чанкинга
 - **Универсальность** — работает для любого контента (код, HTML, таблицы, XML, YAML)
-- **Минимальные метаданные** — только bm25_boost_terms, symbols, graph_questions, graph_answers
+- **Минимальные метаданные** — только symbols, graph_questions, graph_answers
 - **Цикл с tool calling** вместо сложной оркестрации
 - **Локальность** вместо облачных зависимостей
 
