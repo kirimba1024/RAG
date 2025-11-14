@@ -294,6 +294,7 @@ http://localhost:5601  # Kibana (Elasticsearch данные)
 - Prompt caching включен (cache_control: ephemeral)
 - История контекста: разбивается на страницы (history_pages) и сырой хвост (raw); страницы кэшируются и используются в system-блоках
 - Суммаризация диалога: кнопка "Суммаризировать" сжимает весь накопленный контекст в одну кэшируемую страницу через промпт system_summarize.txt
+- Подсчет токенов: интерфейс отображает общее количество токенов с учетом кэширования (base + cache_write + cache_read для входных, output для выходных), экономию от prompt caching (cache write ≈ 1.25×, cache read ≈ 0.1× от базовой стоимости)
 
 **Embeddings:**
 - Model: BAAI/bge-m3 (1024 dims)
