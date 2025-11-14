@@ -132,7 +132,9 @@ def summarize_dialog(history, history_pages, raw):
     text_chunks = [b.text for b in response.content if b.type == "text"]
     summary_text = "\n".join(text_chunks).strip()
     summary_page = page_block_from_messages([assistant_text(summary_text)])
-    return history, [summary_page], []
+    summary_message = {"role": "assistant", "content": f"📝 **Суммаризация диалога:**\n\n{summary_text}"}
+    updated_history = history + [summary_message]
+    return updated_history, [summary_page], []
 
 def chat(message, history, history_pages, raw):
     logger.info(f"💬 {message}...")
@@ -156,7 +158,7 @@ def chat(message, history, history_pages, raw):
             max_tokens=4096,
         )
         track_tokens(response)
-        text_chunks = [b.text for b in response.content if b.type == "text"]
+        text_chunks = [b.text for b in response.content if b.type == "text" and b.text.strip()]
         if text_chunks:
             text = "\n".join(text_chunks)
             raw.append(assistant_text(text))
@@ -230,7 +232,7 @@ with gr.Blocks(title="RAG Assistant") as demo:
 
     gr.Examples(
         examples=[
-            "Как сущности есть в этом проекте?",
+            "Как сущности есть?",
             "Объясни, как работает frontend?",
             "Найди любую сущность из проекта, а потом все связанные с ней места кода.",
         ],
