@@ -17,8 +17,8 @@ MAIN_SEARCH_TOOL = {
             "top_n": {
                 "type": "integer",
                 "minimum": 1,
-                "maximum": 30,
-                "description": "количество результатов после reranking (1-30, стандартное: 10)"
+                "maximum": 60,
+                "description": "количество запрашиваемых чанков. Начинай с малого и увеличивай если недостаточно информации. "
             },
             "symbols": {
                 "type": "array",

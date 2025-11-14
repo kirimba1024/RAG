@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Literal, Sequence
 from anthropic import Anthropic
 from anthropic.types import TextBlockParam, DocumentBlockParam, MessageParam, ToolResultBlockParam, PlainTextSourceParam
+from html import escape
 
 from utils import CLAUDE_MODEL, ANTHROPIC_API_KEY, load_prompt, setup_logging
 from tools import MAIN_SEARCH_TOOL, EXECUTE_COMMAND_TOOL, GET_CHUNKS_TOOL, DB_QUERY_TOOLS
@@ -77,6 +78,25 @@ def user_tool_results(results: list) -> MessageParam:
 SYSTEM_NAVIGATION_BLOCK = nav_block(NAVIGATION)
 SYSTEM_SUMMARIZE_BLOCK = summarize_block(SUMMARIZE)
 
+def format_tool_log(name: str, input_data: dict, result) -> str:
+    input_str = json.dumps(input_data, ensure_ascii=False, indent=2)
+    result_str = json.dumps(result, ensure_ascii=False, indent=2) if isinstance(result, (dict, list)) else str(result)
+    return f"""
+<div style="margin: 10px 0; padding: 10px; border-left: 3px solid #4CAF50; background: #f5f5f5;">
+<strong>🔧 {escape(name)}</strong>
+<div style="margin-top: 8px;">
+<details>
+<summary style="cursor: pointer; color: #2196F3;">📥 Input</summary>
+<pre style="margin: 5px 0; padding: 8px; background: white; border-radius: 4px; overflow-x: auto;">{escape(input_str)}</pre>
+</details>
+<details>
+<summary style="cursor: pointer; color: #FF9800;">📤 Result</summary>
+<pre style="margin: 5px 0; padding: 8px; background: white; border-radius: 4px; overflow-x: auto;">{escape(result_str)}</pre>
+</details>
+</div>
+</div>
+"""
+
 def summarize_dialog(history, history_pages, raw):
     logger.info("📝 Суммаризация диалога...")
     history = history or []
@@ -136,6 +156,7 @@ def chat(message, history, history_pages, raw):
         yield history + [{"role": "user", "content": message}] + answers + [{"role": "assistant", "content": status}], history_pages, raw, ""
         last_tools = [tool_use_msg(tool_uses)]
         tool_results = []
+        tool_logs = []
         for tu in tool_uses:
             if tu.name == "main_search":
                 result = main_search(tu.input["question"], tu.input["path_prefix"], tu.input["top_n"], tu.input.get("symbols"), tu.input.get("use_reranker", True))
@@ -148,7 +169,12 @@ def chat(message, history, history_pages, raw):
             else:
                 logger.exception("Unknown tool: %s", tu.name)
                 result = {"error": f"unknown tool {tu.name}"}
+            tool_logs.append(format_tool_log(tu.name, tu.input, result))
             tool_results.append(tool_result_block(tu.id, result))
+        if tool_logs:
+            log_content = "".join(tool_logs)
+            answers.append({"role": "assistant", "content": log_content})
+            yield history + [{"role": "user", "content": message}] + answers, history_pages, raw, ""
         last_tools.append(user_tool_results(tool_results))
         raw_size = sum(len(canon_json(entry)) for entry in raw)
         if raw_size > RAW_THRESHOLD:
