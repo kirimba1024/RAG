@@ -61,8 +61,12 @@ def retrieve_fusion_nodes(question: str, path_prefix: str, top_n: int, symbols, 
     logger.info(f"🔗 RRF: bm25={len(bm25_hits)} knn={len(knn_hits)} → shortlist={len(candidates)}")
     if use_reranker and candidates:
         RERANKER.top_n = top_n
-        return [nws.node for nws in RERANKER.postprocess_nodes(candidates, query_bundle=QueryBundle(query_str=question))]
-    return [nws.node for nws in candidates[:top_n]]
+        result = [nws.node for nws in RERANKER.postprocess_nodes(candidates, query_bundle=QueryBundle(query_str=question))]
+        logger.info(f"✨ top_n={top_n} → returned={len(result)} (⭐ reranked)")
+        return result
+    result = [nws.node for nws in candidates[:top_n]]
+    logger.info(f"✨ top_n={top_n} → returned={len(result)}")
+    return result
 
 def format_chunk_data(doc_id, metadata):
     return {
