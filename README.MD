@@ -41,7 +41,7 @@
 - `build.py` — инкрементальная индексация repos_safe/ в ES
 - `chat.py` — Gradio интерфейс с циклом tool calling и суммаризацией диалога
 - `retriever.py` — гибридный поиск ES (kNN+BM25+reranking)
-- `tools.py` — инструменты для Claude (main_search, execute_command, get_chunks)
+- `tools.py` — инструменты для Claude (main_search, execute_command)
 - `utils.py` — конфигурация и вспомогательные функции
 - `mask.py` — маскировка секретов при индексации
 - `docker-compose.yml` — оркестрация сервисов (ES, Kibana, Sandbox)
@@ -154,12 +154,7 @@ pip install -r requirements.txt -c constraints.txt
    cat src/main/java/com/example/Service.java
    ```
 
-3. **get_chunks** — запрос чанков по их ID
-   ```python
-   chunk_ids=["path/to/file.py#1/5", "path/to/file.py#3/5"]
-   ```
-
-4. **db_query** (динамические тулы) — выполнение SQL запросов к базам данных через NL2SQL
+3. **db_query** (динамические тулы) — выполнение SQL запросов к базам данных через NL2SQL
    - Для каждой БД создаётся отдельный tool с уникальным именем из `DB_<X>_TOOL_NAME`
    - LLM автоматически получает схему БД и генерирует SQL на основе вопроса на естественном языке
    - Read-only доступ: только SELECT запросы, statement_timeout=30s
@@ -259,7 +254,7 @@ http://localhost:5601  # Kibana (Elasticsearch данные)
 
 **LLM:**
 - BASE_LLM: Claude (модель из CLAUDE_MODEL env)
-- Цикл с tool calling: модель вызывает инструменты (main_search, execute_command, get_chunks) по мере необходимости до формирования финального ответа
+- Цикл с tool calling: модель вызывает инструменты (main_search, execute_command) по мере необходимости до формирования финального ответа
 - Prompt caching включен (cache_control: ephemeral)
 - История контекста: разбивается на страницы (history_pages) и сырой хвост (raw); страницы кэшируются и используются в system-блоках
 - Суммаризация диалога: кнопка "Суммаризировать" сжимает весь накопленный контекст в одну кэшируемую страницу через промпт system_summarize.txt

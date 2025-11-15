@@ -69,16 +69,6 @@ def format_chunk_data(doc_id, metadata):
         **{k: v for k, v in metadata.items() if k in set(SOURCE_FIELDS)}
     }
 
-def get_chunks(chunk_ids):
-    if not chunk_ids:
-        return []
-    response = ES.mget(
-        index=ES_INDEX_CHUNKS,
-        ids=chunk_ids,
-        request_timeout=30
-    )
-    return [format_chunk_data(doc["_id"], doc["_source"]) for doc in response["docs"] if doc["found"]]
-
 def main_search(question: str, path_prefix: str, top_n: int, symbols, use_reranker):
     nodes = retrieve_fusion_nodes(question, path_prefix, top_n, symbols, use_reranker)
     return [format_chunk_data(node.id_, node.metadata) for node in nodes]

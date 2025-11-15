@@ -8,7 +8,7 @@ MAIN_SEARCH_TOOL = {
         "properties": {
             "question": {
                 "type": "string",
-                "description": "поисковый запрос"
+                "description": "поисковый запрос на русском языке (код и документация проиндексированы на русском)"
             },
             "path_prefix": {
                 "type": "string",
@@ -56,22 +56,6 @@ EXECUTE_COMMAND_TOOL = {
             }
         },
         "required": ["command"]
-    }
-}
-
-GET_CHUNKS_TOOL = {
-    "name": "get_chunks",
-    "description": "Запрос чанков по их chunk_id для поиска.",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "chunk_ids": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": "массив chunk_id для получения"
-            }
-        },
-        "required": ["chunk_ids"]
     }
 }
 

@@ -7,8 +7,8 @@ from anthropic.types import TextBlockParam, DocumentBlockParam, MessageParam, To
 from html import escape
 
 from utils import CLAUDE_MODEL, ANTHROPIC_API_KEY, load_prompt, setup_logging
-from tools import MAIN_SEARCH_TOOL, EXECUTE_COMMAND_TOOL, GET_CHUNKS_TOOL, DB_QUERY_TOOLS
-from retriever import main_search, get_chunks
+from tools import MAIN_SEARCH_TOOL, EXECUTE_COMMAND_TOOL, DB_QUERY_TOOLS
+from retriever import main_search
 from utils import execute_command, DB_CONNECTIONS, db_query
 
 logger = setup_logging(Path(__file__).stem)
@@ -17,8 +17,9 @@ BASE_LLM = Anthropic(api_key=ANTHROPIC_API_KEY)
 
 NAVIGATION = load_prompt("templates/system_navigation.txt")
 SUMMARIZE = load_prompt("templates/system_summarize.txt")
-TOOL_LOG_TEMPLATE = load_prompt("templates/tool_log.html")
-TOOLS = [MAIN_SEARCH_TOOL, EXECUTE_COMMAND_TOOL, GET_CHUNKS_TOOL] + DB_QUERY_TOOLS
+TOOL_OUTPUT_TEMPLATE = load_prompt("templates/tool_output.html")
+TOOL_INPUT_TEMPLATE = load_prompt("templates/tool_input.html")
+TOOLS = [MAIN_SEARCH_TOOL, EXECUTE_COMMAND_TOOL] + DB_QUERY_TOOLS
 MAX_TOOL_LOOPS = 8
 RAW_THRESHOLD = 12000
 
@@ -91,12 +92,17 @@ def user_tool_results(results: list) -> MessageParam:
 SYSTEM_NAVIGATION_BLOCK = nav_block(NAVIGATION)
 SYSTEM_SUMMARIZE_BLOCK = summarize_block(SUMMARIZE)
 
-def format_tool_log(name: str, input_data: dict, result) -> str:
+def format_tool_input(name: str, input_data: dict) -> str:
     input_str = json.dumps(input_data, ensure_ascii=False, indent=2)
-    result_str = json.dumps(result, ensure_ascii=False, indent=2) if isinstance(result, (dict, list)) else str(result)
-    return TOOL_LOG_TEMPLATE.format(
+    return TOOL_INPUT_TEMPLATE.format(
         name=escape(name),
-        input=escape(input_str),
+        input=escape(input_str)
+    )
+
+def format_tool_output(name: str, result) -> str:
+    result_str = json.dumps(result, ensure_ascii=False, indent=2) if isinstance(result, (dict, list)) else str(result)
+    return TOOL_OUTPUT_TEMPLATE.format(
+        name=escape(name),
         result=escape(result_str)
     )
 
@@ -134,6 +140,7 @@ def chat(message, history, history_pages, raw):
     raw = raw or []
     raw.append(user_text(message))
     answers = []
+    yield history + [{"role": "user", "content": message}], history_pages, raw, ""
     loops = 0
     last_tools = []
     while True:
@@ -159,20 +166,19 @@ def chat(message, history, history_pages, raw):
         tool_uses = [b for b in response.content if b.type == "tool_use"]
         if not tool_uses:
             break
-        tool_names = ", ".join(tu.name for tu in tool_uses)
         logger.info(f"🔧 Использование инструментов: {tool_uses}")
-        status = f"🔧 {tool_names}..."
-        yield history + [{"role": "user", "content": message}] + answers + [{"role": "assistant", "content": status}], history_pages, raw, ""
+        input_logs = [format_tool_input(tu.name, tu.input) for tu in tool_uses]
+        if input_logs:
+            input_content = "".join(input_logs)
+            answers.append({"role": "assistant", "content": input_content})
+            yield history + [{"role": "user", "content": message}] + answers, history_pages, raw, ""
         last_tools = [tool_use_msg(tool_uses)]
         tool_results = []
-        tool_logs = []
         for tu in tool_uses:
             if tu.name == "main_search":
                 result = main_search(tu.input["question"], tu.input["path_prefix"], tu.input["top_n"], tu.input.get("symbols"), tu.input.get("use_reranker", True))
             elif tu.name == "execute_command":
                 result = execute_command(tu.input["command"])
-            elif tu.name == "get_chunks":
-                result = get_chunks(tu.input["chunk_ids"])
             elif tu.name in DB_CONNECTIONS:
                 result = db_query(tu.name, tu.input["question"])
             else:
@@ -181,12 +187,10 @@ def chat(message, history, history_pages, raw):
             input_preview = json.dumps(tu.input, ensure_ascii=False, separators=(",", ":"))
             result_preview = json.dumps(result, ensure_ascii=False, separators=(",", ":")) if isinstance(result, (dict, list)) else str(result)
             logger.info(f"🔧 {tu.name}: input={input_preview}, result={result_preview}")
-            tool_logs.append(format_tool_log(tu.name, tu.input, result))
-            tool_results.append(tool_result_block(tu.id, result))
-        if tool_logs:
-            log_content = "".join(tool_logs)
-            answers.append({"role": "assistant", "content": log_content})
+            result_content = format_tool_output(tu.name, result)
+            answers.append({"role": "assistant", "content": result_content})
             yield history + [{"role": "user", "content": message}] + answers, history_pages, raw, ""
+            tool_results.append(tool_result_block(tu.id, result))
         last_tools.append(user_tool_results(tool_results))
         raw_size = sum(len(canon_json(entry)) for entry in raw)
         if raw_size > RAW_THRESHOLD:
