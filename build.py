@@ -22,7 +22,7 @@ CLAUDE = Anthropic(api_key=ANTHROPIC_API_KEY)
 
 EMBEDDING = HuggingFaceEmbedding(EMBED_MODEL, normalize=True)
 
-SPLIT_SYSTEM = load_prompt("prompts/system_split_blocks.txt")
+SPLIT_SYSTEM = load_prompt("templates/system_split_blocks.txt")
 
 def analyze_block_issues(blocks, total_lines, rel_path):
     sorted_blocks = sorted(blocks, key=lambda b: (b["start_line"], b["end_line"]))

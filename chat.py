@@ -15,19 +15,20 @@ logger = setup_logging(Path(__file__).stem)
 
 BASE_LLM = Anthropic(api_key=ANTHROPIC_API_KEY)
 
-NAVIGATION = load_prompt("prompts/system_navigation.txt")
-SUMMARIZE = load_prompt("prompts/system_summarize.txt")
+NAVIGATION = load_prompt("templates/system_navigation.txt")
+SUMMARIZE = load_prompt("templates/system_summarize.txt")
+TOOL_LOG_TEMPLATE = load_prompt("templates/tool_log.html")
 TOOLS = [MAIN_SEARCH_TOOL, EXECUTE_COMMAND_TOOL, GET_CHUNKS_TOOL] + DB_QUERY_TOOLS
 MAX_TOOL_LOOPS = 8
 RAW_THRESHOLD = 12000
 
-TOKEN_STATS = {"input_base": 0, "cache_write": 0, "cache_read": 0, "output": 0}
+TOKEN_STATS = {"input": 0, "cache_write": 0, "cache_read": 0, "output": 0}
 
 def track_tokens(response):
     if response.usage:
         cache_read = getattr(response.usage, "cache_read_input_tokens", 0) or 0
         cache_creation = getattr(response.usage, "cache_creation_input_tokens", 0) or 0
-        TOKEN_STATS["input_base"] += response.usage.input_tokens
+        TOKEN_STATS["input"] += response.usage.input_tokens
         TOKEN_STATS["cache_write"] += cache_creation
         TOKEN_STATS["cache_read"] += cache_read
         TOKEN_STATS["output"] += response.usage.output_tokens
@@ -93,21 +94,11 @@ SYSTEM_SUMMARIZE_BLOCK = summarize_block(SUMMARIZE)
 def format_tool_log(name: str, input_data: dict, result) -> str:
     input_str = json.dumps(input_data, ensure_ascii=False, indent=2)
     result_str = json.dumps(result, ensure_ascii=False, indent=2) if isinstance(result, (dict, list)) else str(result)
-    return f"""
-<div style="margin: 10px 0; padding: 10px; border-left: 3px solid #4CAF50; background: #f5f5f5;">
-<strong>🔧 {escape(name)}</strong>
-<div style="margin-top: 8px;">
-<details>
-<summary style="cursor: pointer; color: #2196F3;">📥 Input</summary>
-<pre style="margin: 5px 0; padding: 8px; background: white; border-radius: 4px; overflow-x: auto;">{escape(input_str)}</pre>
-</details>
-<details>
-<summary style="cursor: pointer; color: #FF9800;">📤 Result</summary>
-<pre style="margin: 5px 0; padding: 8px; background: white; border-radius: 4px; overflow-x: auto;">{escape(result_str)}</pre>
-</details>
-</div>
-</div>
-"""
+    return TOOL_LOG_TEMPLATE.format(
+        name=escape(name),
+        input=escape(input_str),
+        result=escape(result_str)
+    )
 
 def summarize_dialog(history, history_pages, raw):
     logger.info("📝 Суммаризация диалога...")
@@ -212,13 +203,13 @@ with gr.Blocks(title="RAG Assistant") as demo:
     )
 
     def update_tokens():
-        if TOKEN_STATS["input_base"] == 0 and TOKEN_STATS["output"] == 0:
+        if TOKEN_STATS["input"] == 0 and TOKEN_STATS["output"] == 0:
             return "Токены: 0"
-        input_total = TOKEN_STATS["input_base"] + TOKEN_STATS["cache_write"] + TOKEN_STATS["cache_read"]
-        paid_equiv = TOKEN_STATS["input_base"] + 1.25 * TOKEN_STATS["cache_write"] + 0.1 * TOKEN_STATS["cache_read"]
+        input_total = TOKEN_STATS["input"] + TOKEN_STATS["cache_write"] + TOKEN_STATS["cache_read"]
+        paid_equiv = TOKEN_STATS["input"] + 1.25 * TOKEN_STATS["cache_write"] + 0.1 * TOKEN_STATS["cache_read"]
         total_equiv = paid_equiv + TOKEN_STATS["output"]
         saved_equiv = input_total - paid_equiv
-        return f"Токены: {total_equiv:,.0f} (экономия: {saved_equiv:,.0f})<br>Сырые: base={TOKEN_STATS['input_base']:,}, write={TOKEN_STATS['cache_write']:,}, read={TOKEN_STATS['cache_read']:,}, output={TOKEN_STATS['output']:,}"
+        return f"Токены: {total_equiv:,.0f} (экономия: {saved_equiv:,.0f})<br>Сырые: input={TOKEN_STATS['input']:,}, cache_write={TOKEN_STATS['cache_write']:,}, cache_read={TOKEN_STATS['cache_read']:,}, output={TOKEN_STATS['output']:,}"
 
     token_display = gr.Markdown(update_tokens())
 
