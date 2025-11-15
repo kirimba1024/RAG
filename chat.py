@@ -22,7 +22,7 @@ TOOL_INPUT_TEMPLATE = load_prompt("templates/tool_input.html")
 STATS_TEMPLATE = load_prompt("templates/stats.html")
 TOOLS = [MAIN_SEARCH_TOOL, EXECUTE_COMMAND_TOOL] + DB_QUERY_TOOLS
 MAX_TOOL_LOOPS = 8
-RAW_THRESHOLD = 2000
+RAW_KEEP_LAST = 3
 
 TOKEN_STATS = {"input": 0, "cache_write": 0, "cache_read": 0, "output": 0}
 
@@ -50,7 +50,7 @@ def doc_block(doc_data) -> DocumentBlockParam:
     data = canon_json(doc_data) if is_json else str(doc_data)
     media_type: Literal["text/plain"] = "text/plain"
     source: PlainTextSourceParam = {"type": "text", "media_type": media_type, "data": data}
-    return {"type": "document", "source": source}
+    return {"type": "document", "source": source, "cache_control": {"type": "ephemeral"}}
 
 def nav_block(text: str) -> TextBlockParam:
     return text_block_cached(canon_json({"nav": text}))
@@ -107,19 +107,16 @@ def format_tool_output(name: str, result) -> str:
         result=escape(result_str)
     )
 
-def summarize_dialog(history, history_pages, raw):
-    logger.info("📝 Суммаризация диалога...")
-    history = history or []
-    history_pages = history_pages or []
-    raw = raw or []
+def auto_summarize_pages(history_pages):
     all_messages = []
     for page in history_pages:
-        page_data = json.loads(page["text"])
-        all_messages.extend(page_data)
-    all_messages.extend(raw)
+        try:
+            page_data = json.loads(page["text"])
+            all_messages.extend(page_data)
+        except:
+            pass
     if not all_messages:
-        logger.warning("Нет данных для суммаризации")
-        return history, history_pages, raw
+        return history_pages, None
     response = BASE_LLM.messages.create(
         model=CLAUDE_MODEL,
         system=[SYSTEM_SUMMARIZE_BLOCK],
@@ -129,10 +126,19 @@ def summarize_dialog(history, history_pages, raw):
     track_tokens(response)
     text_chunks = [b.text for b in response.content if b.type == "text"]
     summary_text = "\n".join(text_chunks).strip()
-    summary_page = page_block_from_messages([assistant_text(summary_text)])
-    summary_message = {"role": "assistant", "content": f"📝 **Суммаризация диалога:**\n\n{summary_text}"}
-    updated_history = history + [{"role": "user", "content": ""}, summary_message]
-    return updated_history, [summary_page], []
+    return [page_block_from_messages([assistant_text(summary_text)])], summary_text
+
+def archive_raw_if_needed(history_pages, raw):
+    keep_count = min(RAW_KEEP_LAST, len(raw))
+    to_archive = raw[:-keep_count] if keep_count > 0 else raw
+    if to_archive:
+        history_pages.append(page_block_from_messages(to_archive))
+    raw = raw[-keep_count:] if keep_count > 0 else []
+    summary_text = None
+    if len(history_pages) > 3:
+        logger.info("📝 Автосуммаризация: слишком много страниц")
+        history_pages, summary_text = auto_summarize_pages(history_pages)
+    return history_pages, raw, summary_text
 
 def chat(message, history, history_pages, raw):
     logger.info(f"💬 {message}...")
@@ -143,7 +149,6 @@ def chat(message, history, history_pages, raw):
     answers = []
     yield history + [{"role": "user", "content": message}], history_pages, raw, ""
     loops = 0
-    last_tools = []
     while True:
         loops += 1
         if loops > MAX_TOOL_LOOPS:
@@ -152,7 +157,7 @@ def chat(message, history, history_pages, raw):
         response = BASE_LLM.messages.create(
             model=CLAUDE_MODEL,
             system=[SYSTEM_NAVIGATION_BLOCK] + history_pages[-3:],
-            messages=raw + last_tools,
+            messages=raw,
             tools=TOOLS,
             max_tokens=4096,
         )
@@ -165,38 +170,40 @@ def chat(message, history, history_pages, raw):
             answers.append({"role": "assistant", "content": text})
             yield history + [{"role": "user", "content": message}] + answers, history_pages, raw, ""
         tool_uses = [b for b in response.content if b.type == "tool_use"]
+        if tool_uses:
+            logger.info(f"🔧 Использование инструментов: {tool_uses}")
+            raw.append(tool_use_msg(tool_uses))
+            input_logs = [format_tool_input(tu.name, tu.input) for tu in tool_uses]
+            if input_logs:
+                input_content = "".join(input_logs)
+                answers.append({"role": "assistant", "content": input_content})
+                yield history + [{"role": "user", "content": message}] + answers, history_pages, raw, ""
+            tool_results = []
+            for tu in tool_uses:
+                if tu.name == "main_search":
+                    result = main_search(tu.input["question"], tu.input["path_prefix"], tu.input["top_n"], tu.input.get("symbols"), tu.input.get("use_reranker", True))
+                elif tu.name == "execute_command":
+                    result = execute_command(tu.input["command"])
+                elif tu.name in DB_CONNECTIONS:
+                    result = db_query(tu.name, tu.input["question"])
+                else:
+                    logger.exception("Unknown tool: %s", tu.name)
+                    result = {"error": f"unknown tool {tu.name}"}
+                input_preview = json.dumps(tu.input, ensure_ascii=False, separators=(",", ":"))
+                result_preview = json.dumps(result, ensure_ascii=False, separators=(",", ":")) if isinstance(result, (dict, list)) else str(result)
+                logger.info(f"🔧 {tu.name}: input={input_preview}, result={result_preview}")
+                result_content = format_tool_output(tu.name, result)
+                answers.append({"role": "assistant", "content": result_content})
+                yield history + [{"role": "user", "content": message}] + answers, history_pages, raw, ""
+                tool_results.append(tool_result_block(tu.id, result))
+            raw.append(user_tool_results(tool_results))
+        history_pages, raw, summary_text = archive_raw_if_needed(history_pages, raw)
+        if summary_text:
+            summary_msg = f"📝 **Суммаризация диалога:**\n\n{summary_text}"
+            answers.append({"role": "assistant", "content": summary_msg})
+            yield history + [{"role": "user", "content": message}] + answers, history_pages, raw, ""
         if not tool_uses:
             break
-        logger.info(f"🔧 Использование инструментов: {tool_uses}")
-        input_logs = [format_tool_input(tu.name, tu.input) for tu in tool_uses]
-        if input_logs:
-            input_content = "".join(input_logs)
-            answers.append({"role": "assistant", "content": input_content})
-            yield history + [{"role": "user", "content": message}] + answers, history_pages, raw, ""
-        last_tools = [tool_use_msg(tool_uses)]
-        tool_results = []
-        for tu in tool_uses:
-            if tu.name == "main_search":
-                result = main_search(tu.input["question"], tu.input["path_prefix"], tu.input["top_n"], tu.input.get("symbols"), tu.input.get("use_reranker", True))
-            elif tu.name == "execute_command":
-                result = execute_command(tu.input["command"])
-            elif tu.name in DB_CONNECTIONS:
-                result = db_query(tu.name, tu.input["question"])
-            else:
-                logger.exception("Unknown tool: %s", tu.name)
-                result = {"error": f"unknown tool {tu.name}"}
-            input_preview = json.dumps(tu.input, ensure_ascii=False, separators=(",", ":"))
-            result_preview = json.dumps(result, ensure_ascii=False, separators=(",", ":")) if isinstance(result, (dict, list)) else str(result)
-            logger.info(f"🔧 {tu.name}: input={input_preview}, result={result_preview}")
-            result_content = format_tool_output(tu.name, result)
-            answers.append({"role": "assistant", "content": result_content})
-            yield history + [{"role": "user", "content": message}] + answers, history_pages, raw, ""
-            tool_results.append(tool_result_block(tu.id, result))
-        last_tools.append(user_tool_results(tool_results))
-        raw_size = sum(len(canon_json(entry)) for entry in raw)
-        if raw_size > RAW_THRESHOLD:
-            history_pages.append(page_block_from_messages(raw))
-            raw = []
     yield history + [{"role": "user", "content": message}] + answers, history_pages, raw, ""
 
 with gr.Blocks(title="RAG Assistant") as demo:
@@ -246,7 +253,6 @@ with gr.Blocks(title="RAG Assistant") as demo:
             placeholder="Задайте вопрос...", show_label=False, container=False, scale=7
         )
         submit = gr.Button("Отправить", variant="primary", scale=1)
-        summarize_btn = gr.Button("Суммаризировать", scale=1)
         clear = gr.Button("Очистить", scale=1)
 
     gr.Examples(
@@ -261,7 +267,6 @@ with gr.Blocks(title="RAG Assistant") as demo:
 
     message_input.submit(chat, inputs=[message_input, chatbot, history_pages_state, raw_state], outputs=[chatbot, history_pages_state, raw_state, message_input])
     submit.click(chat, inputs=[message_input, chatbot, history_pages_state, raw_state], outputs=[chatbot, history_pages_state, raw_state, message_input])
-    summarize_btn.click(summarize_dialog, inputs=[chatbot, history_pages_state, raw_state], outputs=[chatbot, history_pages_state, raw_state])
     clear.click(lambda: ([], [], [], ""), outputs=[chatbot, history_pages_state, raw_state, message_input])
 
     timer = gr.Timer(value=1, active=True)
