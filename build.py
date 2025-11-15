@@ -91,7 +91,7 @@ def normalize_blocks(blocks, total_lines, rel_path):
         normalized_blocks.append(new_block)
         previous_end_line = end_line
     if not normalized_blocks:
-        return [{"start_line": 1, "end_line": total_lines, "title": "logic", "kind": "logic_block", "symbols": [], "graph_questions": [], "graph_answers": []}]
+        return [{"start_line": 1, "end_line": total_lines, "title": "logic", "kind": "logic_block", "symbols": []}]
     if normalized_blocks[-1]["end_line"] < total_lines:
         missing_start = normalized_blocks[-1]["end_line"] + 1
         logger.warning(f"⚠️  Last block ends at line {normalized_blocks[-1]['end_line']}, file has {total_lines} lines. Extending last block to cover {missing_start}-{total_lines}")
@@ -169,7 +169,7 @@ def index_es_file(rel_path, new_hash):
         start_line = block_def["start_line"]
         end_line = block_def["end_line"]
         block_text = '\n'.join(lines_list[start_line-1:end_line])
-        if "symbols" in block_def and isinstance(block_def["symbols"], list):
+        if isinstance(block_def["symbols"], list):
             block_def["symbols"] = list(dict.fromkeys(block_def["symbols"]))
         chunks.append({
             "_op_type": "index",

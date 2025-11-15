@@ -67,12 +67,7 @@
 
       "kind":            { "type": "keyword", "normalizer": "lower_ascii" },
       "title":           { "type": "keyword", "normalizer": "lower_ascii" },
-      "symbols":         { "type": "keyword", "normalizer": "lower_ascii" },
-      "graph_questions": { "type": "keyword", "normalizer": "lower_ascii" },
-      "graph_answers":   { "type": "keyword", "normalizer": "lower_ascii" },
- 
-      "links_out":       { "type": "object", "enabled": false },
-      "links_in":        { "type": "object", "enabled": false }
+      "symbols":         { "type": "keyword", "normalizer": "lower_ascii" }
     }
   }
 }

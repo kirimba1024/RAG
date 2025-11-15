@@ -61,7 +61,7 @@ EXECUTE_COMMAND_TOOL = {
 
 GET_CHUNKS_TOOL = {
     "name": "get_chunks",
-    "description": "Запрос чанков по их chunk_id для поиска. Удобно для графовой Q-A навигации через links_out/links_in.",
+    "description": "Запрос чанков по их chunk_id для поиска.",
     "input_schema": {
         "type": "object",
         "properties": {
@@ -120,16 +120,14 @@ SPLIT_BLOCKS_TOOL = {
                     "additionalProperties": False,
                     "required": [
                         "start_line", "end_line", "title", "kind",
-                        "symbols", "graph_questions", "graph_answers"
+                        "symbols"
                     ],
                     "properties": {
                         "start_line": {"type": "integer", "minimum": 1, "description": "первая строка блока (1-индексация)"},
                         "end_line":   {"type": "integer", "minimum": 1, "description": "последняя строка блока включительно (1-индексация)"},
                         "title":      {"type": "string",  "minLength": 1, "maxLength": 120, "description": "краткое имя: function: foo, class: Bar, section: Config"},
                         "kind":       {"type": "string",  "minLength": 1, "maxLength": 32,  "description": "section, paragraph, list, list_item, table, code, config, class, function; при сомнении — logic_block"},
-                        "symbols":          {"type": "array", "items": {"type": "string"}, "maxItems": 20, "description": "каноничные имена сущностей (классы, функции, константы, env-ключи)"},
-                        "graph_questions":  {"type": "array", "items": {"type": "string"}, "minItems": 2, "maxItems": 5, "description": "кто вызывает, где определяется, что обновляет, откуда данные"},
-                        "graph_answers":    {"type": "array", "items": {"type": "string"}, "minItems": 2, "maxItems": 5, "description": "здесь определяется/обновляет/вызывает/реализует"}
+                        "symbols":    {"type": "array", "items": {"type": "string"}, "maxItems": 20, "description": "каноничные имена сущностей (классы, функции, константы, env-ключи)"}
                     }
                 }
             }

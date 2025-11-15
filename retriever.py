@@ -22,7 +22,7 @@ if embedding_dim != 1024:
 DEVICE = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
 RERANKER = SentenceTransformerRerank(model=RERANK_MODEL, top_n=10, device=DEVICE)
 
-SOURCE_FIELDS = ["text", "path", "start_line", "end_line", "title", "symbols", "lang", "mime", "file_lines", "kind", "links_in", "links_out", "chunk_id", "chunks"]
+SOURCE_FIELDS = ["text", "path", "start_line", "end_line", "title", "symbols", "lang", "mime", "file_lines", "kind", "chunk_id", "chunks"]
 
 def rrf_fusion(ranked_lists, k=60):
     pos = [{d: i for i, d in enumerate(lst)} for lst in ranked_lists]
