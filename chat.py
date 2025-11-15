@@ -19,9 +19,10 @@ NAVIGATION = load_prompt("templates/system_navigation.txt")
 SUMMARIZE = load_prompt("templates/system_summarize.txt")
 TOOL_OUTPUT_TEMPLATE = load_prompt("templates/tool_output.html")
 TOOL_INPUT_TEMPLATE = load_prompt("templates/tool_input.html")
+STATS_TEMPLATE = load_prompt("templates/stats.html")
 TOOLS = [MAIN_SEARCH_TOOL, EXECUTE_COMMAND_TOOL] + DB_QUERY_TOOLS
 MAX_TOOL_LOOPS = 8
-RAW_THRESHOLD = 12000
+RAW_THRESHOLD = 2000
 
 TOKEN_STATS = {"input": 0, "cache_write": 0, "cache_read": 0, "output": 0}
 
@@ -130,7 +131,7 @@ def summarize_dialog(history, history_pages, raw):
     summary_text = "\n".join(text_chunks).strip()
     summary_page = page_block_from_messages([assistant_text(summary_text)])
     summary_message = {"role": "assistant", "content": f"📝 **Суммаризация диалога:**\n\n{summary_text}"}
-    updated_history = history + [summary_message]
+    updated_history = history + [{"role": "user", "content": ""}, summary_message]
     return updated_history, [summary_page], []
 
 def chat(message, history, history_pages, raw):
@@ -211,16 +212,34 @@ with gr.Blocks(title="RAG Assistant") as demo:
         sanitize_html=False,
     )
 
-    def update_tokens():
+    def update_stats(history_pages, raw):
+        history_pages = history_pages or []
+        raw = raw or []
+        page1_chars = len(canon_json(history_pages[-1])) if history_pages else 0
+        page2_chars = len(canon_json(history_pages[-2])) if len(history_pages) >= 2 else 0
+        raw_chars = sum(len(canon_json(e)) for e in raw)
         if TOKEN_STATS["input"] == 0 and TOKEN_STATS["output"] == 0:
-            return "Токены: 0"
-        input_total = TOKEN_STATS["input"] + TOKEN_STATS["cache_write"] + TOKEN_STATS["cache_read"]
-        paid_equiv = TOKEN_STATS["input"] + 1.25 * TOKEN_STATS["cache_write"] + 0.1 * TOKEN_STATS["cache_read"]
-        total_equiv = paid_equiv + TOKEN_STATS["output"]
-        saved_equiv = input_total - paid_equiv
-        return f"Токены: {total_equiv:,.0f} (экономия: {saved_equiv:,.0f})<br>Сырые: input={TOKEN_STATS['input']:,}, cache_write={TOKEN_STATS['cache_write']:,}, cache_read={TOKEN_STATS['cache_read']:,}, output={TOKEN_STATS['output']:,}"
+            total_equiv = 0
+            saved_equiv = 0
+        else:
+            input_total = TOKEN_STATS["input"] + TOKEN_STATS["cache_write"] + TOKEN_STATS["cache_read"]
+            paid_equiv = TOKEN_STATS["input"] + 1.25 * TOKEN_STATS["cache_write"] + 0.1 * TOKEN_STATS["cache_read"]
+            total_equiv = paid_equiv + TOKEN_STATS["output"]
+            saved_equiv = input_total - paid_equiv
+        return STATS_TEMPLATE.format(
+            pages_count=len(history_pages),
+            page1_chars=page1_chars,
+            page2_chars=page2_chars,
+            raw_chars=raw_chars,
+            total_equiv=total_equiv,
+            saved_equiv=saved_equiv,
+            input=TOKEN_STATS["input"],
+            cache_write=TOKEN_STATS["cache_write"],
+            cache_read=TOKEN_STATS["cache_read"],
+            output=TOKEN_STATS["output"]
+        )
 
-    token_display = gr.Markdown(update_tokens())
+    token_display = gr.Markdown()
 
     with gr.Row():
         message_input = gr.Textbox(
@@ -246,7 +265,7 @@ with gr.Blocks(title="RAG Assistant") as demo:
     clear.click(lambda: ([], [], [], ""), outputs=[chatbot, history_pages_state, raw_state, message_input])
 
     timer = gr.Timer(value=1, active=True)
-    timer.tick(update_tokens, outputs=[token_display])
+    timer.tick(update_stats, inputs=[history_pages_state, raw_state], outputs=[token_display])
 
 if __name__ == "__main__":
     demo.launch(server_name="0.0.0.0", server_port=7860, share=False)
