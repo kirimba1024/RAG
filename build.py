@@ -217,6 +217,7 @@ def get_file_manifest():
             src = hit.get("_source", {})
             result[src.get("path")] = src.get("hash")
         scroll = ES.scroll(scroll_id=scroll_id, scroll="5m")
+        scroll_id = scroll.get("_scroll_id", scroll_id)
         hits = scroll["hits"]["hits"]
     ES.clear_scroll(scroll_id=scroll_id)
     logger.info(f"📋 Loaded {len(result)} file manifests from ES")
