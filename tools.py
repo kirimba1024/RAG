@@ -49,7 +49,7 @@ EXECUTE_COMMAND_TOOL = {
                 "type": "string",
                 "description": (
                     "команда для выполнения в изолированном контейнере. "
-                    "Доступные утилиты: grep, find, awk, sed, bash, curl, wget, git, jq, tree, file, diff, less, vim, cat, head, tail, wc, sort, uniq, cut, tr, xargs, "
+                    "Доступные утилиты: grep, find, awk, sed, bash, git, jq, tree, file, diff, less, vim, cat, head, tail, wc, sort, uniq, cut, tr, xargs, "
                     "basename, dirname, realpath, stat, ls, cmp, split, tee, seq, od, strings, tar, gzip, md5sum, sha256sum, date, env, ps, df, du, "
                     "which, type, command, test, readlink, echo, printf"
                 )
