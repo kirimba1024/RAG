@@ -153,3 +153,6 @@ junit.xml
 *.seed
 *.sock
 .DS_Store?
+
+.gitignore
+.git
