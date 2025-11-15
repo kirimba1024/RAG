@@ -152,6 +152,7 @@ def chat(message, history, history_pages, raw):
         text_chunks = [b.text for b in response.content if b.type == "text" and b.text.strip()]
         if text_chunks:
             text = "\n".join(text_chunks)
+            logger.info(f"🤖 {text}")
             raw.append(assistant_text(text))
             answers.append({"role": "assistant", "content": text})
             yield history + [{"role": "user", "content": message}] + answers, history_pages, raw, ""
@@ -159,6 +160,7 @@ def chat(message, history, history_pages, raw):
         if not tool_uses:
             break
         tool_names = ", ".join(tu.name for tu in tool_uses)
+        logger.info(f"🔧 Использование инструментов: {tool_uses}")
         status = f"🔧 {tool_names}..."
         yield history + [{"role": "user", "content": message}] + answers + [{"role": "assistant", "content": status}], history_pages, raw, ""
         last_tools = [tool_use_msg(tool_uses)]
@@ -176,6 +178,9 @@ def chat(message, history, history_pages, raw):
             else:
                 logger.exception("Unknown tool: %s", tu.name)
                 result = {"error": f"unknown tool {tu.name}"}
+            input_preview = json.dumps(tu.input, ensure_ascii=False, separators=(",", ":"))
+            result_preview = json.dumps(result, ensure_ascii=False, separators=(",", ":")) if isinstance(result, (dict, list)) else str(result)
+            logger.info(f"🔧 {tu.name}: input={input_preview}, result={result_preview}")
             tool_logs.append(format_tool_log(tu.name, tu.input, result))
             tool_results.append(tool_result_block(tu.id, result))
         if tool_logs:

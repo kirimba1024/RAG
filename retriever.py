@@ -74,7 +74,7 @@ def get_chunks(chunk_ids):
         return []
     response = ES.mget(
         index=ES_INDEX_CHUNKS,
-        body={"ids": chunk_ids},
+        ids=chunk_ids,
         request_timeout=30
     )
     return [format_chunk_data(doc["_id"], doc["_source"]) for doc in response["docs"] if doc["found"]]
