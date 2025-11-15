@@ -224,6 +224,7 @@ with gr.Blocks(title="RAG Assistant") as demo:
         raw = raw or []
         page1_chars = len(canon_json(history_pages[-1])) if history_pages else 0
         page2_chars = len(canon_json(history_pages[-2])) if len(history_pages) >= 2 else 0
+        page3_chars = len(canon_json(history_pages[-3])) if len(history_pages) >= 3 else 0
         raw_chars = sum(len(canon_json(e)) for e in raw)
         if TOKEN_STATS["input"] == 0 and TOKEN_STATS["output"] == 0:
             total_equiv = 0
@@ -237,6 +238,7 @@ with gr.Blocks(title="RAG Assistant") as demo:
             pages_count=len(history_pages),
             page1_chars=page1_chars,
             page2_chars=page2_chars,
+            page3_chars=page3_chars,
             raw_chars=raw_chars,
             total_equiv=total_equiv,
             saved_equiv=saved_equiv,
