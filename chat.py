@@ -50,7 +50,7 @@ def doc_block(doc_data) -> DocumentBlockParam:
     data = canon_json(doc_data) if is_json else str(doc_data)
     media_type: Literal["text/plain"] = "text/plain"
     source: PlainTextSourceParam = {"type": "text", "media_type": media_type, "data": data}
-    return {"type": "document", "source": source, "cache_control": {"type": "ephemeral"}}
+    return {"type": "document", "source": source}
 
 def nav_block(text: str) -> TextBlockParam:
     return text_block_cached(canon_json({"nav": text}))
@@ -197,13 +197,13 @@ def chat(message, history, history_pages, raw):
                 yield history + [{"role": "user", "content": message}] + answers, history_pages, raw, ""
                 tool_results.append(tool_result_block(tu.id, result))
             raw.append(user_tool_results(tool_results))
-        history_pages, raw, summary_text = archive_raw_if_needed(history_pages, raw)
-        if summary_text:
-            summary_msg = f"📝 **Суммаризация диалога:**\n\n{summary_text}"
-            answers.append({"role": "assistant", "content": summary_msg})
-            yield history + [{"role": "user", "content": message}] + answers, history_pages, raw, ""
         if not tool_uses:
             break
+    history_pages, raw, summary_text = archive_raw_if_needed(history_pages, raw)
+    if summary_text:
+        summary_msg = f"📝 **Суммаризация диалога:**\n\n{summary_text}"
+        answers.append({"role": "assistant", "content": summary_msg})
+        yield history + [{"role": "user", "content": message}] + answers, history_pages, raw, ""
     yield history + [{"role": "user", "content": message}] + answers, history_pages, raw, ""
 
 with gr.Blocks(title="RAG Assistant") as demo:
