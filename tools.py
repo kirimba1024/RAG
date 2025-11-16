@@ -1,4 +1,4 @@
-from utils import DB_CONNECTIONS
+from db_utils import DB_CONNECTIONS
 
 MAIN_SEARCH_TOOL = {
     "name": "main_search",
@@ -8,7 +8,7 @@ MAIN_SEARCH_TOOL = {
         "properties": {
             "question": {
                 "type": "string",
-                "description": "поисковый запрос на русском языке (код и документация проиндексированы на русском)"
+                "description": "вопрос на русском языке"
             },
             "path_prefix": {
                 "type": "string",
@@ -59,7 +59,7 @@ EXECUTE_COMMAND_TOOL = {
     }
 }
 
-def build_db_query_tools():
+def build_select_tools():
     tools = []
     for tool_name, conn in DB_CONNECTIONS.items():
         tools.append({
@@ -68,17 +68,22 @@ def build_db_query_tools():
             "input_schema": {
                 "type": "object",
                 "properties": {
-                    "question": {
+                    "select": {
                         "type": "string",
-                        "description": "вопрос на естественном языке для генерации SQL запроса"
+                        "description": (
+                            "Готовый SQL SELECT запрос. "
+                            "Разрешены только операции чтения. "
+                            "НЕ передавай сюда вопросы на естественном языке. "
+                            "Только валидный SELECT."
+                        )
                     }
                 },
-                "required": ["question"]
+                "required": ["select"]
             }
         })
     return tools
 
-DB_QUERY_TOOLS = build_db_query_tools()
+SELECT_TOOLS = build_select_tools()
 
 SPLIT_BLOCKS_TOOL = {
     "name": "split_blocks",

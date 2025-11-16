@@ -12,10 +12,9 @@ from utils import (
     load_prompt,
     setup_logging,
     execute_command,
-    DB_CONNECTIONS,
-    db_query,
 )
-from tools import MAIN_SEARCH_TOOL, EXECUTE_COMMAND_TOOL, DB_QUERY_TOOLS
+from db_utils import DB_CONNECTIONS, db_query
+from tools import MAIN_SEARCH_TOOL, EXECUTE_COMMAND_TOOL, SELECT_TOOLS
 from retriever import main_search
 
 logger = setup_logging(Path(__file__).stem)
@@ -26,7 +25,7 @@ NAVIGATION = load_prompt("templates/system_navigation.txt")
 TOOL_OUTPUT_TEMPLATE = load_prompt("templates/tool_output.html")
 TOOL_INPUT_TEMPLATE = load_prompt("templates/tool_input.html")
 STATS_TEMPLATE = load_prompt("templates/stats.html")
-TOOLS = [MAIN_SEARCH_TOOL, EXECUTE_COMMAND_TOOL] + DB_QUERY_TOOLS
+TOOLS = [MAIN_SEARCH_TOOL, EXECUTE_COMMAND_TOOL] + SELECT_TOOLS
 MAX_TOOL_LOOPS = 12
 
 TOKEN_STATS = {"input": 0, "cache_write": 0, "cache_read": 0, "output": 0}
@@ -210,7 +209,7 @@ def chat(message, history, history_pages):
                 elif tu.name == "execute_command":
                     result = execute_command(tu.input["command"])
                 elif tu.name in DB_CONNECTIONS:
-                    result = db_query(tu.name, tu.input["question"])
+                    result = db_query(tu.name, tu.input["select"])
                 else:
                     result = {"error": f"unknown tool {tu.name}"}
                 logger.info(

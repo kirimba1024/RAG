@@ -16,10 +16,6 @@ from pptx import Presentation
 from dotenv import load_dotenv
 from pathspec import PathSpec
 from llama_index.readers.file import UnstructuredReader
-from llama_index.core.query_engine import NLSQLTableQueryEngine
-from llama_index.core import SQLDatabase
-from llama_index.llms.anthropic import Anthropic as AnthropicLLM
-from sqlalchemy import create_engine
 
 load_dotenv()
 
@@ -39,30 +35,6 @@ ES_URL = f"http://{ES_HOST}:{ES_PORT}"
 
 SANDBOX_CONTAINER_NAME = os.getenv("SANDBOX_CONTAINER_NAME", "rag-assistant-rag-sandbox-1")
 
-def load_db_connections():
-    connections = {}
-    idx = 1
-    while True:
-        url = os.getenv(f"DB_{idx}_URL")
-        if not url:
-            break
-        username = os.getenv(f"DB_{idx}_USERNAME")
-        password = os.getenv(f"DB_{idx}_PASSWORD")
-        description = os.getenv(f"DB_{idx}_DESCRIPTION")
-        tool_name = os.getenv(f"DB_{idx}_TOOL_NAME")
-        if username and password and tool_name:
-            connections[tool_name] = {
-                "url": url,
-                "username": username,
-                "password": password,
-                "description": description
-            }
-        idx += 1
-    return connections
-
-DB_CONNECTIONS = load_db_connections()
-
-_QUERY_ENGINES = {}
 
 REPOS_ROOT = Path("repos").resolve()
 REPOS_SAFE_ROOT = Path("repos_safe").resolve()
@@ -183,19 +155,3 @@ def execute_command(command: str):
         "exit_code": exec_result.returncode
     }
 
-def get_query_engine(tool_name):
-    if tool_name in _QUERY_ENGINES:
-        return _QUERY_ENGINES[tool_name]
-    conn = DB_CONNECTIONS[tool_name]
-    url = f"postgresql://{conn['username']}:{conn['password']}@{conn['url'].replace('postgresql://', '').replace('postgres://', '')}"
-    sql_database = SQLDatabase(create_engine(url, connect_args={"options": "-c statement_timeout=30s"}))
-    query_engine = NLSQLTableQueryEngine(sql_database=sql_database, llm=AnthropicLLM(model=CLAUDE_MODEL, api_key=ANTHROPIC_API_KEY))
-    _QUERY_ENGINES[tool_name] = query_engine
-    return query_engine
-
-def db_query(tool_name, question):
-    response = get_query_engine(tool_name).query(question)
-    return {
-        "answer": str(response),
-        "sql": response.metadata.get("sql_query", "")
-    }
