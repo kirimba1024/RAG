@@ -155,9 +155,9 @@ pip install -r requirements.txt -c constraints.txt
    cat src/main/java/com/example/Service.java
    ```
 
-3. **db_query** (динамические тулы) — выполнение SQL запросов к базам данных через NL2SQL
+3. **Инструменты для работы с БД** (динамические тулы) — выполнение SELECT запросов к базам данных
    - Для каждой БД создаётся отдельный tool с уникальным именем из `DB_<X>_TOOL_NAME`
-   - LLM автоматически получает схему БД и генерирует SQL на основе вопроса на естественном языке
+   - Модель сама генерирует SQL SELECT запрос на основе вопроса пользователя, затем вызывает инструмент с готовым SQL
    - Read-only доступ: только SELECT запросы, statement_timeout=30s
    - Конфигурация через ENV: `DB_<X>_URL`, `DB_<X>_USERNAME`, `DB_<X>_PASSWORD`, `DB_<X>_DESCRIPTION`, `DB_<X>_TOOL_NAME`
 
@@ -255,7 +255,7 @@ http://localhost:5601  # Kibana (Elasticsearch данные)
 
 **LLM:**
 - BASE_LLM: Claude (модель из CLAUDE_MODEL env)
-- Цикл с tool calling: модель вызывает инструменты (main_search, execute_command, db_query) по мере необходимости до формирования финального ответа
+- Цикл с tool calling: модель вызывает инструменты (main_search, execute_command, инструменты для БД) по мере необходимости до формирования финального ответа
 - Prompt caching включен (cache_control: ephemeral для system-промптов, страниц истории и результатов инструментов)
 - История контекста: "три кольца" структуры
   * Кольцо 1: навигационный system-промпт + последние 3 страницы истории
