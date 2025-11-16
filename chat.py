@@ -27,7 +27,7 @@ TOOL_OUTPUT_TEMPLATE = load_prompt("templates/tool_output.html")
 TOOL_INPUT_TEMPLATE = load_prompt("templates/tool_input.html")
 STATS_TEMPLATE = load_prompt("templates/stats.html")
 TOOLS = [MAIN_SEARCH_TOOL, EXECUTE_COMMAND_TOOL] + DB_QUERY_TOOLS
-MAX_TOOL_LOOPS = 8
+MAX_TOOL_LOOPS = 12
 
 TOKEN_STATS = {"input": 0, "cache_write": 0, "cache_read": 0, "output": 0}
 
