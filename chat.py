@@ -1,84 +1,82 @@
 import gradio as gr
 import json
 from pathlib import Path
-from typing import Literal, Sequence
+from typing import Sequence
 from anthropic import Anthropic
-from anthropic.types import TextBlockParam, DocumentBlockParam, MessageParam, ToolResultBlockParam, PlainTextSourceParam
+from anthropic.types import TextBlockParam, DocumentBlockParam, MessageParam, ToolResultBlockParam
 from html import escape
 
-from utils import CLAUDE_MODEL, ANTHROPIC_API_KEY, load_prompt, setup_logging
+from utils import (
+    CLAUDE_MODEL,
+    ANTHROPIC_API_KEY,
+    load_prompt,
+    setup_logging,
+    execute_command,
+    DB_CONNECTIONS,
+    db_query,
+)
 from tools import MAIN_SEARCH_TOOL, EXECUTE_COMMAND_TOOL, DB_QUERY_TOOLS
 from retriever import main_search
-from utils import execute_command, DB_CONNECTIONS, db_query
 
 logger = setup_logging(Path(__file__).stem)
 
 BASE_LLM = Anthropic(api_key=ANTHROPIC_API_KEY)
 
 NAVIGATION = load_prompt("templates/system_navigation.txt")
-SUMMARIZE = load_prompt("templates/system_summarize.txt")
 TOOL_OUTPUT_TEMPLATE = load_prompt("templates/tool_output.html")
 TOOL_INPUT_TEMPLATE = load_prompt("templates/tool_input.html")
 STATS_TEMPLATE = load_prompt("templates/stats.html")
 TOOLS = [MAIN_SEARCH_TOOL, EXECUTE_COMMAND_TOOL] + DB_QUERY_TOOLS
 MAX_TOOL_LOOPS = 8
-RAW_KEEP_LAST = 3
 
 TOKEN_STATS = {"input": 0, "cache_write": 0, "cache_read": 0, "output": 0}
 
 def track_tokens(response):
-    if response.usage:
-        cache_read = getattr(response.usage, "cache_read_input_tokens", 0) or 0
-        cache_creation = getattr(response.usage, "cache_creation_input_tokens", 0) or 0
-        TOKEN_STATS["input"] += response.usage.input_tokens
-        TOKEN_STATS["cache_write"] += cache_creation
-        TOKEN_STATS["cache_read"] += cache_read
-        TOKEN_STATS["output"] += response.usage.output_tokens
-
+    if not response.usage:
+        return
+    cache_read = getattr(response.usage, "cache_read_input_tokens", 0) or 0
+    cache_creation = getattr(response.usage, "cache_creation_input_tokens", 0) or 0
+    TOKEN_STATS["input"] += response.usage.input_tokens
+    TOKEN_STATS["cache_write"] += cache_creation
+    TOKEN_STATS["cache_read"] += cache_read
+    TOKEN_STATS["output"] += response.usage.output_tokens
 
 def canon_json(obj) -> str:
     return json.dumps(obj, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
-
-def text_block(value: str) -> TextBlockParam:
-    return {"type": "text", "text": value}
 
 def text_block_cached(value: str) -> TextBlockParam:
     return {"type": "text", "text": value, "cache_control": {"type": "ephemeral"}}
 
 def doc_block(doc_data) -> DocumentBlockParam:
-    is_json = isinstance(doc_data, (dict, list))
-    data = canon_json(doc_data) if is_json else str(doc_data)
-    media_type: Literal["text/plain"] = "text/plain"
-    source: PlainTextSourceParam = {"type": "text", "media_type": media_type, "data": data}
-    return {"type": "document", "source": source}
+    data = canon_json(doc_data) if isinstance(doc_data, (dict, list)) else str(doc_data)
+    return {
+        "type": "document",
+        "source": {"type": "text", "media_type": "text/plain", "data": data},
+    }
 
-def nav_block(text: str) -> TextBlockParam:
-    return text_block_cached(canon_json({"nav": text}))
+def user_text(text: str) -> MessageParam | None:
+    text = (text or "").strip()
+    if not text:
+        return None
+    return {"role": "user", "content": [{"type": "text", "text": text}]}
 
-def summarize_block(text: str) -> TextBlockParam:
-    return text_block_cached(canon_json({"summarize": text}))
+def assistant_text(text: str) -> MessageParam | None:
+    text = (text or "").strip()
+    if not text:
+        return None
+    return {"role": "assistant", "content": [{"type": "text", "text": text}]}
 
-def page_block_from_messages(messages_list: list) -> TextBlockParam:
-    return text_block_cached(canon_json(messages_list))
-
-def msg(role: Literal["user", "assistant"], content) -> MessageParam:
-    if isinstance(content, str):
-        content = [text_block(content)]
-    elif isinstance(content, dict):
-        content = [content]
-    return {"role": role, "content": content}
-
-def user_text(text: str) -> MessageParam:
-    return msg("user", text)
-
-def assistant_text(text: str) -> MessageParam:
-    return msg("assistant", text)
+def ui_msg(role: str, text: str) -> dict:
+    return {"role": role, "content": text}
 
 def tool_use_msg(tool_uses: Sequence) -> MessageParam:
-    return msg("assistant", [
-        {"type": "tool_use", "id": tu.id, "name": tu.name, "input": tu.input}
-        for tu in tool_uses
-    ])
+    return {
+        "role": "assistant",
+        "content": [
+            {"type": "tool_use", "id": tu.id, "name": tu.name, "input": tu.input}
+            for tu in tool_uses
+        ],
+    }
 
 def tool_result_block(tool_use_id: str, tool_result_data) -> ToolResultBlockParam:
     return {
@@ -90,126 +88,151 @@ def tool_result_block(tool_use_id: str, tool_result_data) -> ToolResultBlockPara
 def user_tool_results(results: list) -> MessageParam:
     return {"role": "user", "content": results}
 
-SYSTEM_NAVIGATION_BLOCK = nav_block(NAVIGATION)
-SYSTEM_SUMMARIZE_BLOCK = summarize_block(SUMMARIZE)
+SYSTEM_NAVIGATION_BLOCK = text_block_cached(canon_json({"nav": NAVIGATION}))
 
 def format_tool_input(name: str, input_data: dict) -> str:
-    input_str = json.dumps(input_data, ensure_ascii=False, indent=2)
     return TOOL_INPUT_TEMPLATE.format(
         name=escape(name),
-        input=escape(input_str)
+        input=escape(json.dumps(input_data, ensure_ascii=False, indent=2)),
     )
 
 def format_tool_output(name: str, result) -> str:
-    result_str = json.dumps(result, ensure_ascii=False, indent=2) if isinstance(result, (dict, list)) else str(result)
-    return TOOL_OUTPUT_TEMPLATE.format(
-        name=escape(name),
-        result=escape(result_str)
+    if isinstance(result, (dict, list)):
+        result_str = json.dumps(result, ensure_ascii=False, indent=2)
+    else:
+        result_str = str(result)
+    return TOOL_OUTPUT_TEMPLATE.format(name=escape(name), result=escape(result_str))
+
+def get_text_chunks(response) -> list[str]:
+    return [
+        b.text.strip()
+        for b in response.content
+        if b.type == "text" and b.text.strip()
+    ]
+
+def update_stats(history_pages):
+    texts = [p["text"] for p in history_pages[-3:]]
+    texts = [""] * (3 - len(texts)) + texts
+    chars = [len(t) for t in texts]
+    input_total = (
+        TOKEN_STATS["input"]
+        + TOKEN_STATS["cache_write"]
+        + TOKEN_STATS["cache_read"]
+    )
+    paid_equiv = (
+        TOKEN_STATS["input"]
+        + 1.25 * TOKEN_STATS["cache_write"]
+        + 0.1 * TOKEN_STATS["cache_read"]
+    )
+    total_equiv = paid_equiv + TOKEN_STATS["output"]
+    saved_equiv = input_total - paid_equiv
+    return STATS_TEMPLATE.format(
+        pages_count=len(history_pages),
+        page1_chars=chars[2],
+        page2_chars=chars[1],
+        page3_chars=chars[0],
+        page1_text=escape(texts[2]),
+        page2_text=escape(texts[1]),
+        page3_text=escape(texts[0]),
+        total_equiv=total_equiv,
+        saved_equiv=saved_equiv,
+        input=TOKEN_STATS["input"],
+        cache_write=TOKEN_STATS["cache_write"],
+        cache_read=TOKEN_STATS["cache_read"],
+        output=TOKEN_STATS["output"],
     )
 
-def auto_summarize_pages(history_pages):
-    all_messages = []
-    for page in history_pages:
-        try:
-            page_data = json.loads(page["text"])
-            all_messages.extend(page_data)
-        except:
-            pass
-    if not all_messages:
-        return history_pages, None
-    response = BASE_LLM.messages.create(
-        model=CLAUDE_MODEL,
-        system=[SYSTEM_SUMMARIZE_BLOCK],
-        messages=all_messages,
-        max_tokens=4096,
-    )
-    track_tokens(response)
-    text_chunks = [b.text for b in response.content if b.type == "text"]
-    summary_text = "\n".join(text_chunks).strip()
-    return [page_block_from_messages([assistant_text(summary_text)])], summary_text
-
-def archive_raw_if_needed(history_pages, raw):
-    keep_count = min(RAW_KEEP_LAST, len(raw))
-    to_archive = raw[:-keep_count] if keep_count > 0 else raw
-    if to_archive:
-        history_pages.append(page_block_from_messages(to_archive))
-    raw = raw[-keep_count:] if keep_count > 0 else []
-    summary_text = None
-    if len(history_pages) > 3:
-        logger.info("📝 Автосуммаризация: слишком много страниц")
-        history_pages, summary_text = auto_summarize_pages(history_pages)
-    return history_pages, raw, summary_text
-
-def chat(message, history, history_pages, raw):
-    logger.info(f"💬 {message}...")
+def chat(message, history, history_pages):
+    message = (message or "").strip()
+    logger.info("💬 %s...", message)
     history = history or []
     history_pages = history_pages or []
-    raw = raw or []
-    raw.append(user_text(message))
+    if not message:
+        yield history, history_pages, ""
+        return
+    raw: list[MessageParam] = []
+    user_msg = user_text(message)
+    if user_msg:
+        raw.append(user_msg)
     answers = []
-    yield history + [{"role": "user", "content": message}], history_pages, raw, ""
+    current_history = history + [ui_msg("user", message)]
+    yield current_history, history_pages, ""
     loops = 0
+    last_tool_use: list[MessageParam] = []
+    last_tool_results: list[MessageParam] = []
     while True:
         loops += 1
         if loops > MAX_TOOL_LOOPS:
-            logger.warning("Max tool loops reached")
             break
-        response = BASE_LLM.messages.create(
-            model=CLAUDE_MODEL,
-            system=[SYSTEM_NAVIGATION_BLOCK] + history_pages[-3:],
-            messages=raw,
-            tools=TOOLS,
-            max_tokens=4096,
-        )
+        try:
+            response = BASE_LLM.messages.create(
+                model=CLAUDE_MODEL,
+                system=[SYSTEM_NAVIGATION_BLOCK] + history_pages[-3:],
+                messages=raw + last_tool_use + last_tool_results,
+                tools=TOOLS,
+                max_tokens=4096,
+            )
+        except Exception:
+            logger.exception("Ошибка при вызове LLM")
+            answers.append(ui_msg("assistant", "Произошла ошибка при обращении к модели. Посмотри логи."))
+            yield current_history + answers, history_pages, ""
+            return
         track_tokens(response)
-        text_chunks = [b.text for b in response.content if b.type == "text" and b.text.strip()]
+        last_tool_use = []
+        last_tool_results = []
+        text_chunks = get_text_chunks(response)
         if text_chunks:
             text = "\n".join(text_chunks)
-            logger.info(f"🤖 {text}")
-            raw.append(assistant_text(text))
-            answers.append({"role": "assistant", "content": text})
-            yield history + [{"role": "user", "content": message}] + answers, history_pages, raw, ""
+            logger.info("🤖 %s", text)
+            assistant_msg = assistant_text(text)
+            if assistant_msg:
+                raw.append(assistant_msg)
+            answers.append(ui_msg("assistant", text))
+            yield current_history + answers, history_pages, ""
         tool_uses = [b for b in response.content if b.type == "tool_use"]
         if tool_uses:
-            logger.info(f"🔧 Использование инструментов: {tool_uses}")
-            raw.append(tool_use_msg(tool_uses))
+            logger.info("🔧 Использование инструментов: %s", tool_uses)
+            last_tool_use = [tool_use_msg(tool_uses)]
             input_logs = [format_tool_input(tu.name, tu.input) for tu in tool_uses]
             if input_logs:
-                input_content = "".join(input_logs)
-                answers.append({"role": "assistant", "content": input_content})
-                yield history + [{"role": "user", "content": message}] + answers, history_pages, raw, ""
+                answers.append(ui_msg("assistant", "".join(input_logs)))
+                yield current_history + answers, history_pages, ""
             tool_results = []
             for tu in tool_uses:
                 if tu.name == "main_search":
-                    result = main_search(tu.input["question"], tu.input["path_prefix"], tu.input["top_n"], tu.input.get("symbols"), tu.input.get("use_reranker", True))
+                    result = main_search(
+                        tu.input["question"],
+                        tu.input["path_prefix"],
+                        tu.input["top_n"],
+                        tu.input.get("symbols"),
+                        tu.input.get("use_reranker", True),
+                    )
                 elif tu.name == "execute_command":
                     result = execute_command(tu.input["command"])
                 elif tu.name in DB_CONNECTIONS:
                     result = db_query(tu.name, tu.input["question"])
                 else:
-                    logger.exception("Unknown tool: %s", tu.name)
                     result = {"error": f"unknown tool {tu.name}"}
-                input_preview = json.dumps(tu.input, ensure_ascii=False, separators=(",", ":"))
-                result_preview = json.dumps(result, ensure_ascii=False, separators=(",", ":")) if isinstance(result, (dict, list)) else str(result)
-                logger.info(f"🔧 {tu.name}: input={input_preview}, result={result_preview}")
-                result_content = format_tool_output(tu.name, result)
-                answers.append({"role": "assistant", "content": result_content})
-                yield history + [{"role": "user", "content": message}] + answers, history_pages, raw, ""
+                logger.info(
+                    "🔧 %s: input=%s, result=%s",
+                    tu.name,
+                    canon_json(tu.input),
+                    canon_json(result) if isinstance(result, (dict, list)) else str(result),
+                )
+                answers.append(ui_msg("assistant", format_tool_output(tu.name, result)))
+                yield current_history + answers, history_pages, ""
                 tool_results.append(tool_result_block(tu.id, result))
-            raw.append(user_tool_results(tool_results))
+            last_tool_results = [user_tool_results(tool_results)]
         if not tool_uses:
             break
-    history_pages, raw, summary_text = archive_raw_if_needed(history_pages, raw)
-    if summary_text:
-        summary_msg = f"📝 **Суммаризация диалога:**\n\n{summary_text}"
-        answers.append({"role": "assistant", "content": summary_msg})
-        yield history + [{"role": "user", "content": message}] + answers, history_pages, raw, ""
-    yield history + [{"role": "user", "content": message}] + answers, history_pages, raw, ""
+    if raw:
+        history_pages.append(text_block_cached(canon_json(raw)))
+        logger.info("📝 Добавлена новая страница, всего страниц: %d", len(history_pages))
+    yield current_history + answers, history_pages, ""
 
 with gr.Blocks(title="RAG Assistant") as demo:
     gr.Markdown("# 🤖 RAG Assistant\n**Claude** с инструментами для навигации по коду")
     history_pages_state = gr.State([])
-    raw_state = gr.State([])
 
     chatbot = gr.Chatbot(
         height=600,
@@ -219,36 +242,7 @@ with gr.Blocks(title="RAG Assistant") as demo:
         sanitize_html=False,
     )
 
-    def update_stats(history_pages, raw):
-        history_pages = history_pages or []
-        raw = raw or []
-        page1_chars = len(canon_json(history_pages[-1])) if history_pages else 0
-        page2_chars = len(canon_json(history_pages[-2])) if len(history_pages) >= 2 else 0
-        page3_chars = len(canon_json(history_pages[-3])) if len(history_pages) >= 3 else 0
-        raw_chars = sum(len(canon_json(e)) for e in raw)
-        if TOKEN_STATS["input"] == 0 and TOKEN_STATS["output"] == 0:
-            total_equiv = 0
-            saved_equiv = 0
-        else:
-            input_total = TOKEN_STATS["input"] + TOKEN_STATS["cache_write"] + TOKEN_STATS["cache_read"]
-            paid_equiv = TOKEN_STATS["input"] + 1.25 * TOKEN_STATS["cache_write"] + 0.1 * TOKEN_STATS["cache_read"]
-            total_equiv = paid_equiv + TOKEN_STATS["output"]
-            saved_equiv = input_total - paid_equiv
-        return STATS_TEMPLATE.format(
-            pages_count=len(history_pages),
-            page1_chars=page1_chars,
-            page2_chars=page2_chars,
-            page3_chars=page3_chars,
-            raw_chars=raw_chars,
-            total_equiv=total_equiv,
-            saved_equiv=saved_equiv,
-            input=TOKEN_STATS["input"],
-            cache_write=TOKEN_STATS["cache_write"],
-            cache_read=TOKEN_STATS["cache_read"],
-            output=TOKEN_STATS["output"]
-        )
-
-    token_display = gr.Markdown()
+    token_display = gr.Markdown(value=update_stats([]))
 
     with gr.Row():
         message_input = gr.Textbox(
@@ -267,12 +261,27 @@ with gr.Blocks(title="RAG Assistant") as demo:
         label="💡 Примеры вопросов",
     )
 
-    message_input.submit(chat, inputs=[message_input, chatbot, history_pages_state, raw_state], outputs=[chatbot, history_pages_state, raw_state, message_input])
-    submit.click(chat, inputs=[message_input, chatbot, history_pages_state, raw_state], outputs=[chatbot, history_pages_state, raw_state, message_input])
-    clear.click(lambda: ([], [], [], ""), outputs=[chatbot, history_pages_state, raw_state, message_input])
+    def clear_chat():
+        return [], [], ""
 
-    timer = gr.Timer(value=1, active=True)
-    timer.tick(update_stats, inputs=[history_pages_state, raw_state], outputs=[token_display])
+    def update_stats_hook(history_pages):
+        return update_stats(history_pages)
+
+    chat_fn = message_input.submit(
+        chat,
+        inputs=[message_input, chatbot, history_pages_state],
+        outputs=[chatbot, history_pages_state, message_input],
+    )
+    chat_fn.then(update_stats_hook, inputs=[history_pages_state], outputs=[token_display])
+    submit_fn = submit.click(
+        chat,
+        inputs=[message_input, chatbot, history_pages_state],
+        outputs=[chatbot, history_pages_state, message_input],
+    )
+    submit_fn.then(update_stats_hook, inputs=[history_pages_state], outputs=[token_display])
+
+    clear_fn = clear.click(clear_chat, outputs=[chatbot, history_pages_state, message_input])
+    clear_fn.then(lambda: update_stats([]), outputs=[token_display])
 
 if __name__ == "__main__":
     demo.launch(server_name="0.0.0.0", server_port=7860, share=False)

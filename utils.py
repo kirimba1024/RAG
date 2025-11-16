@@ -1,4 +1,3 @@
-import base64
 import hashlib
 import logging
 import os
@@ -8,7 +7,6 @@ import unicodedata
 from pathlib import Path
 from io import BytesIO
 
-import docker
 import fitz
 import pandas as pd
 import pytesseract
@@ -40,7 +38,6 @@ ES_INDEX_FILE_MANIFEST = os.getenv("ES_INDEX_FILE_MANIFEST", "file_manifest")
 ES_URL = f"http://{ES_HOST}:{ES_PORT}"
 
 SANDBOX_CONTAINER_NAME = os.getenv("SANDBOX_CONTAINER_NAME", "rag-assistant-rag-sandbox-1")
-ELASTICSEARCH_CONTAINER_NAME = os.getenv("ELASTICSEARCH_CONTAINER_NAME", "rag-assistant-elasticsearch-1")
 
 def load_db_connections():
     connections = {}
@@ -110,17 +107,6 @@ def setup_logging(name: str, file: bool = True) -> logging.Logger:
     logger.propagate = False
     return logger
 
-def message_for_log(text: str, max_size = 256) -> str:
-    text = text.strip().replace("\n", " ").replace("\r", " ").replace("\t", " ")
-    if len(text) <= max_size:
-        return text
-    half_size = max_size // 2
-    return text[:half_size] + "..." + text[-half_size:]
-
-def short_hash(s: str) -> str:
-    d = hashlib.blake2s(s.encode(), digest_size=8).digest()
-    return base64.urlsafe_b64encode(d).decode().rstrip("=")
-
 def to_posix(p: str | Path) -> str:
     s = (str(p) or "").strip().replace("\\", "/")
     while s.startswith("./") or s.startswith("../"):
@@ -138,10 +124,6 @@ def clean_text(text: str) -> str:
     text = re.sub(r"\s*\n\s*", "\n", text)
     text = re.sub(r"[ \t]+", " ", text)
     return text.strip()
-
-def file_hash(path, algo="sha256"):
-    with open(path, "rb") as f:
-        return hashlib.file_digest(f, algo).hexdigest()
 
 IGNORE_FILE = Path(".ignore")
 if not IGNORE_FILE.exists():

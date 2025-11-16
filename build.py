@@ -1,7 +1,6 @@
 import time
 from pathlib import Path
 from datetime import datetime, UTC
-from typing import List, Dict, Any
 import mimetypes
 
 from elasticsearch import Elasticsearch, helpers
@@ -135,7 +134,7 @@ def index_es_file(rel_path, new_hash):
     ext = full_path.suffix.lower()
     lang = LANG_BY_EXT.get(ext, "text")
     file_size = full_path.stat().st_size
-    file_extension = full_path.suffix.lower()[1:] if full_path.suffix else ""
+    file_extension = ext[1:] if ext else ""
     file_name = full_path.name
     file_mime = mimetypes.guess_type(str(full_path))[0] or ""
     now_iso = datetime.now(UTC).isoformat()
@@ -149,11 +148,11 @@ def index_es_file(rel_path, new_hash):
         extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"}
     )
     tool_use_block = next((b for b in response.content if b.type == "tool_use"), None)
-    text_content = "\n".join(b.text for b in response.content if b.type == "text") if response.content else ""
+    text_content = "\n".join(b.text for b in response.content if b.type == "text")
     if text_content:
         logger.info(f"💬 Claude returned text for {rel_path}: {text_content}")
     if not tool_use_block:
-        content_types = [b.type for b in response.content] if response.content else []
+        content_types = [b.type for b in response.content]
         logger.error(f"❌ Claude returned {content_types} instead of tool_use for {rel_path}. Text: {text_content}")
         raise RuntimeError(f"Claude не вернул tool_use для {rel_path} для разбиения на блоки")
     blocks = tool_use_block.input.get("blocks")

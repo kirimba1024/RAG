@@ -93,7 +93,7 @@ SECRET_PATTERNS = [
     *([(re.compile("|".join(map(re.escape, sorted(IGNORE_EXACT, key=len, reverse=True)))), "[REDACTED]")] if IGNORE_EXACT else []),
 ]
 
-def check_secrets_in_text(text: str, file_path: str = None) -> None:
+def check_secrets_in_text(text: str, file_path: str) -> None:
     with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt", encoding="utf-8") as tmp:
         tmp.write(text)
         tmp_path = tmp.name

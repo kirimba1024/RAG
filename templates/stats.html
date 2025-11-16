@@ -1,12 +1,53 @@
-<div style="padding: 10px; background: #f8f9fa; border-radius: 6px; font-family: monospace; font-size: 13px;">
-<div style="margin-bottom: 8px;">
-<strong>📊 Память:</strong> страниц={pages_count}, страница[-3]={page3_chars:,}, страница[-2]={page2_chars:,}, страница[-1]={page1_chars:,}, raw={raw_chars:,}
+<div style="display:flex;flex-wrap:wrap;gap:8px;font-family:monospace;font-size:12px;line-height:1.4;">
+  <!-- 🎯 Tokens -->
+  <div style="flex:0 0 220px;min-width:200px;padding:6px 8px;background:#f8f9fa;border:1px solid #dee2e6;border-radius:6px;">
+    <div style="margin-bottom:2px;">
+      <strong>🎯 Tokens</strong>
+    </div>
+    <details style="margin-top:4px;">
+      <summary style="cursor:pointer;font-size:11px;">
+        <span>spent:&nbsp;{total_equiv:,.0f}</span>
+        <span style="color:#28a745;margin-left:8px;">saved:&nbsp;{saved_equiv:,.0f}</span>
+      </summary>
+      <div style="margin-top:4px;font-size:11px;">
+        input={input:,}<br/>
+        cache_write={cache_write:,}<br/>
+        cache_read={cache_read:,}<br/>
+        output={output:,}
+      </div>
+    </details>
+  </div>
+  <!-- page1 -->
+  <div style="flex:0 0 220px;min-width:200px;padding:6px 8px;background:#f8f9fa;border:1px solid #dee2e6;border-radius:6px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+      <strong>📄 page-1</strong>
+      <span style="font-size:11px;color:#555;">{page1_chars:,}&nbsp;chars</span>
+    </div>
+    <details style="margin-top:4px;">
+      <summary style="cursor:pointer;color:#0066cc;font-size:11px;">show content</summary>
+      <pre style="margin:4px 0 0 0;padding:6px;background:white;border:1px solid #ddd;border-radius:3px;font-size:11px;max-height:160px;overflow:auto;white-space:pre-wrap;word-wrap:break-word;">{page1_text}</pre>
+    </details>
+  </div>
+  <!-- page2 -->
+  <div style="flex:0 0 220px;min-width:200px;padding:6px 8px;background:#f8f9fa;border:1px solid #dee2e6;border-radius:6px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+      <strong>📄 page-2</strong>
+      <span style="font-size:11px;color:#555;">{page2_chars:,}&nbsp;chars</span>
+    </div>
+    <details style="margin-top:4px;">
+      <summary style="cursor:pointer;color:#0066cc;font-size:11px;">show content</summary>
+      <pre style="margin:4px 0 0 0;padding:6px;background:white;border:1px solid #ddd;border-radius:3px;font-size:11px;max-height:160px;overflow:auto;white-space:pre-wrap;word-wrap:break-word;">{page2_text}</pre>
+    </details>
+  </div>
+  <!-- page3 -->
+  <div style="flex:0 0 220px;min-width:200px;padding:6px 8px;background:#f8f9fa;border:1px solid #dee2e6;border-radius:6px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+      <strong>📄 page-3</strong>
+      <span style="font-size:11px;color:#555;">{page3_chars:,}&nbsp;chars</span>
+    </div>
+    <details style="margin-top:4px;">
+      <summary style="cursor:pointer;color:#0066cc;font-size:11px;">show content</summary>
+      <pre style="margin:4px 0 0 0;padding:6px;background:white;border:1px solid #ddd;border-radius:3px;font-size:11px;max-height:160px;overflow:auto;white-space:pre-wrap;word-wrap:break-word;">{page3_text}</pre>
+    </details>
+  </div>
 </div>
-<div style="margin-bottom: 8px;">
-<strong>🎯 Токены:</strong> {total_equiv:,.0f} <span style="color: #28a745;">(экономия: {saved_equiv:,.0f})</span>
-</div>
-<div>
-<strong>📈 Сырые:</strong> input={input:,}, cache_write={cache_write:,}, cache_read={cache_read:,}, output={output:,}
-</div>
-</div>
-

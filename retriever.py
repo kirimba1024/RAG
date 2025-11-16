@@ -32,7 +32,6 @@ def rrf_fusion(ranked_lists, k=60):
 
 def retrieve_fusion_nodes(question: str, path_prefix: str, top_n: int, symbols, use_reranker) -> List[BaseNode]:
     shortlist = max(6 * top_n, 32) if use_reranker else top_n
-    size = shortlist
     cleaned = path_prefix.replace("*", "") if path_prefix else ""
     normalized = to_posix(cleaned) if cleaned else ""
     path_filter = [{"prefix": {"path": normalized}}] if normalized else []
@@ -41,14 +40,14 @@ def retrieve_fusion_nodes(question: str, path_prefix: str, top_n: int, symbols, 
         should_clauses.append({"terms": {"symbols": [s.lower() for s in symbols if s]}})
     bm25_response = ES.search(
         index=ES_INDEX_CHUNKS,
-        body={"size": size, "query": {"bool": {"filter": path_filter, "should": should_clauses, "minimum_should_match": 1}}, "_source": {"includes": SOURCE_FIELDS}}
+        body={"size": shortlist, "query": {"bool": {"filter": path_filter, "should": should_clauses, "minimum_should_match": 1}}, "_source": {"includes": SOURCE_FIELDS}}
     )
     bm25_hits = {hit["_id"]: hit for hit in bm25_response["hits"]["hits"]}
     query_embedding = Settings.embed_model.get_text_embedding(question)
-    knn_config = {"field": "embedding", "query_vector": query_embedding, "k": size, "num_candidates": shortlist * 4}
+    knn_config = {"field": "embedding", "query_vector": query_embedding, "k": shortlist, "num_candidates": shortlist * 4}
     if path_filter:
         knn_config["filter"] = {"bool": {"must": path_filter}}
-    knn_response = ES.search(index=ES_INDEX_CHUNKS, body={"size": size, "knn": knn_config, "_source": {"includes": SOURCE_FIELDS}})
+    knn_response = ES.search(index=ES_INDEX_CHUNKS, body={"size": shortlist, "knn": knn_config, "_source": {"includes": SOURCE_FIELDS}})
     knn_hits = {hit["_id"]: hit for hit in knn_response["hits"]["hits"]}
     fused_ids = rrf_fusion([bm25_hits.keys(), knn_hits.keys()])[:shortlist]
     all_hits = {**bm25_hits, **knn_hits}
@@ -64,10 +63,7 @@ def retrieve_fusion_nodes(question: str, path_prefix: str, top_n: int, symbols, 
     return result
 
 def format_chunk_data(doc_id, metadata):
-    return {
-        "id": doc_id,
-        **{k: v for k, v in metadata.items() if k in set(SOURCE_FIELDS)}
-    }
+    return {"id": doc_id, **{k: v for k, v in metadata.items() if k in SOURCE_FIELDS}}
 
 def main_search(question: str, path_prefix: str, top_n: int, symbols, use_reranker):
     nodes = retrieve_fusion_nodes(question, path_prefix, top_n, symbols, use_reranker)
