@@ -1,6 +1,7 @@
 import os
 from urllib.parse import urlparse
 from sqlalchemy import create_engine, text
+import sqlparse
 
 _ENGINES = {}
 
@@ -46,12 +47,19 @@ def get_engine(tool_name: str):
     connect_args = {}
     if url.startswith("postgresql"):
         connect_args = {"options": "-c statement_timeout=30s"}
-    engine = create_engine(url, connect_args=connect_args)
+    engine = create_engine(
+        url,
+        connect_args=connect_args,
+        pool_pre_ping=True,
+        pool_timeout=10,
+        pool_recycle=3600,
+    )
     _ENGINES[tool_name] = engine
     return engine
 
 def db_query(tool_name, select):
-    if not select.strip().upper().startswith("SELECT"):
+    parsed = sqlparse.parse(select.strip())
+    if not parsed or parsed[0].get_type() != "SELECT":
         return {"error": "Разрешены только SELECT запросы", "rows": [], "select": select}
     try:
         engine = get_engine(tool_name)
