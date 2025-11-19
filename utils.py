@@ -1,4 +1,3 @@
-import hashlib
 import logging
 import os
 import re
@@ -6,60 +5,34 @@ import subprocess
 import unicodedata
 from pathlib import Path
 from io import BytesIO
+from urllib.parse import urlparse
 
 import fitz
 import pandas as pd
 import pytesseract
+import sqlparse
 from PIL import Image
 from docx import Document as DocxDocument
 from pptx import Presentation
 from dotenv import load_dotenv
 from pathspec import PathSpec
-from llama_index.readers.file import UnstructuredReader
+from sqlalchemy import create_engine, text
+from unstructured.partition.auto import partition
 
 load_dotenv()
 
 def load_prompt(filepath):
     return Path(filepath).read_text(encoding="utf-8")
 
-EMBED_MODEL = os.getenv("EMBED_MODEL", "BAAI/bge-m3")
-RERANK_MODEL = os.getenv("RERANK_MODEL", "BAAI/bge-reranker-large")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-3-haiku-20240307")
 
-ES_HOST = os.getenv("ES_HOST", "localhost")
-ES_PORT = int(os.getenv("ES_PORT", "9200"))
-ES_INDEX_CHUNKS = os.getenv("ES_INDEX_CHUNKS", "chunks")
-ES_INDEX_FILE_MANIFEST = os.getenv("ES_INDEX_FILE_MANIFEST", "file_manifest")
-ES_URL = f"http://{ES_HOST}:{ES_PORT}"
-
 SANDBOX_CONTAINER_NAME = os.getenv("SANDBOX_CONTAINER_NAME", "rag-assistant-rag-sandbox-1")
+_ENGINES = {}
 
 
 REPOS_ROOT = Path("repos").resolve()
 REPOS_SAFE_ROOT = Path("repos_safe").resolve()
-
-LANG_BY_EXT = {
-    ".py": "python", ".js": "javascript", ".jsx": "javascript",
-    ".ts": "typescript", ".tsx": "tsx",
-    ".java": "java", ".kt": "kotlin",
-    ".go": "go", ".rs": "rust",
-    ".c": "c", ".h": "c",
-    ".cpp": "cpp", ".cc": "cpp", ".cxx": "cpp", ".hpp": "cpp", ".hh": "cpp",
-    ".cs": "csharp", ".php": "php", ".rb": "ruby", ".swift": "swift",
-    ".scala": "scala", ".groovy": "groovy", ".m": "objective_c", ".mm": "objective_cpp",
-    ".sh": "bash", ".bash": "bash", ".zsh": "bash",
-    ".cmd": "bash", ".bat": "bash",
-    ".r": "r", ".lua": "lua",
-    ".hs": "haskell",
-    ".toml": "toml",
-    ".sass": "sass", ".scss": "scss",
-    ".jl": "julia",
-    ".ps1": "powershell",
-    ".sql": "sql", ".yaml": "yaml", ".yml": "yaml",
-    ".xml": "xml", ".html": "html", ".htm": "html",
-    ".json": "json",
-}
 
 def setup_logging(name: str, file: bool = True) -> logging.Logger:
     logger = logging.getLogger(name)
@@ -105,11 +78,6 @@ IGNORE_SPEC = PathSpec.from_lines("gitwildmatch", [stripped for line in IGNORE_F
 def is_ignored(rel_path: str) -> bool:
     return IGNORE_SPEC.match_file(rel_path)
 
-def git_blob_oid(path: Path) -> str:
-    data = path.read_bytes()
-    header = f"blob {len(data)}\0".encode()
-    return hashlib.sha1(header + data).hexdigest()
-
 def extract_binary_content(path: Path):
     with open(path, "rb") as f:
         file_bytes = f.read()
@@ -128,9 +96,8 @@ def extract_binary_content(path: Path):
                 text_parts.append(shape.text)
         return "\n".join(text_parts)
     elif ext in [".html", ".epub", ".rtf"]:
-        reader = UnstructuredReader()
-        docs = reader.load_data(file=BytesIO(file_bytes))
-        return "\n".join([doc.text for doc in docs])
+        elements = partition(file=BytesIO(file_bytes))
+        return "\n".join([el.text for el in elements if getattr(el, "text", "").strip()])
     elif ext == ".csv":
         df = pd.read_csv(BytesIO(file_bytes))
         return df.to_string(index=False)
@@ -154,4 +121,115 @@ def execute_command(command: str):
         "stdout": exec_result.stdout,
         "exit_code": exec_result.returncode
     }
+
+def load_db_connections():
+    connections = {}
+    idx = 1
+    while True:
+        url = os.getenv(f"DB_{idx}_URL")
+        if not url:
+            break
+        username = os.getenv(f"DB_{idx}_USERNAME")
+        password = os.getenv(f"DB_{idx}_PASSWORD")
+        description = os.getenv(f"DB_{idx}_DESCRIPTION")
+        tool_name = os.getenv(f"DB_{idx}_TOOL_NAME")
+        if username and password and tool_name:
+            connections[tool_name] = {
+                "url": url,
+                "username": username,
+                "password": password,
+                "description": description,
+            }
+        idx += 1
+    return connections
+
+DB_CONNECTIONS = load_db_connections()
+
+def _sqlalchemy_url(conn: dict) -> str:
+    raw = (conn.get("url") or "").strip().removeprefix("jdbc:")
+    if "://" not in raw:
+        raw = "//" + raw
+    parsed = urlparse(raw)
+    scheme = parsed.scheme or "postgresql"
+    host = parsed.hostname or ""
+    port = f":{parsed.port}" if parsed.port else ""
+    db = (parsed.path or "").lstrip("/") or conn.get("db_name", "")
+    return f"{scheme}://{conn['username']}:{conn['password']}@{host}{port}/{db}"
+
+def get_engine(tool_name: str):
+    if tool_name in _ENGINES:
+        return _ENGINES[tool_name]
+    conn = DB_CONNECTIONS[tool_name]
+    url = _sqlalchemy_url(conn)
+    connect_args = {}
+    if url.startswith("postgresql"):
+        connect_args = {"options": "-c statement_timeout=30s"}
+    engine = create_engine(
+        url,
+        connect_args=connect_args,
+        pool_pre_ping=True,
+        pool_timeout=10,
+        pool_recycle=3600,
+    )
+    _ENGINES[tool_name] = engine
+    return engine
+
+def db_query(tool_name, select_query):
+    parsed = sqlparse.parse((select_query or "").strip())
+    if not parsed or parsed[0].get_type() != "SELECT":
+        return {"error": "Разрешены только SELECT запросы", "rows": [], "select": select_query}
+    try:
+        engine = get_engine(tool_name)
+        with engine.connect() as connection:
+            result = connection.execute(text(select_query))
+            rows = [dict(row._mapping) for row in result]
+        return {"rows": rows, "select": select_query}
+    except Exception as exc:
+        return {"error": str(exc), "rows": [], "select": select_query}
+
+def build_select_tools():
+    tools = []
+    for tool_name, conn in DB_CONNECTIONS.items():
+        tools.append({
+            "name": tool_name,
+            "description": conn["description"],
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "select": {
+                        "type": "string",
+                        "description": (
+                            "Готовый SQL SELECT запрос. "
+                            "Разрешены только операции чтения. "
+                            "НЕ передавай сюда вопросы на естественном языке. "
+                            "Только валидный SELECT."
+                        )
+                    }
+                },
+                "required": ["select"]
+            }
+        })
+    return tools
+
+SELECT_TOOLS = build_select_tools()
+
+EXECUTE_COMMAND_TOOL = {
+    "name": "execute_command",
+    "description": "Выполнение любых консольных команд в изолированном контейнере для взаимодействия с исходными файлами.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "command": {
+                "type": "string",
+                "description": (
+                    "команда для выполнения в изолированном контейнере. "
+                    "Доступные утилиты: grep, find, awk, sed, bash, git, jq, tree, file, diff, less, vim, cat, head, tail, wc, sort, uniq, cut, tr, xargs, "
+                    "basename, dirname, realpath, stat, ls, cmp, split, tee, seq, od, strings, tar, gzip, md5sum, sha256sum, date, env, ps, df, du, "
+                    "which, type, command, test, readlink, echo, printf"
+                )
+            }
+        },
+        "required": ["command"]
+    }
+}
 
