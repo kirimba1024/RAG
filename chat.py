@@ -90,18 +90,18 @@ def user_tool_results(results: list) -> MessageParam:
 
 SYSTEM_NAVIGATION_BLOCK = text_block_cached(canon_json({"nav": NAVIGATION}))
 
-def format_tool_input(name: str, input_data: dict) -> str:
-    return TOOL_INPUT_TEMPLATE.format(
-        name=escape(name),
-        input=escape(json.dumps(input_data, ensure_ascii=False, indent=2)),
-    )
+def format_tool_input(input_data: dict) -> str:
+    summary = input_data["purpose"].strip()
+    body = json.dumps({k: v for k, v in input_data.items() if k != "purpose"} or {}, ensure_ascii=False, indent=2)
+    return TOOL_INPUT_TEMPLATE.format(summary=escape(summary), body=escape(body))
 
-def format_tool_output(name: str, result) -> str:
+def format_tool_output(purpose: str, result) -> str:
+    summary = purpose.strip()
     if isinstance(result, (dict, list)):
         result_str = json.dumps(result, ensure_ascii=False, indent=2)
     else:
         result_str = str(result)
-    return TOOL_OUTPUT_TEMPLATE.format(name=escape(name), result=escape(result_str))
+    return TOOL_OUTPUT_TEMPLATE.format(summary=escape(summary), body=escape(result_str))
 
 def get_text_chunks(response) -> list[str]:
     return [
@@ -193,7 +193,7 @@ def chat(message, history, history_pages):
         if tool_uses:
             logger.info("🔧 Использование инструментов: %s", tool_uses)
             last_tool_use = [tool_use_msg(tool_uses)]
-            input_logs = [format_tool_input(tu.name, tu.input) for tu in tool_uses]
+            input_logs = [format_tool_input(tu.input) for tu in tool_uses]
             if input_logs:
                 answers.append(ui_msg("assistant", "".join(input_logs)))
                 yield current_history + answers, history_pages, ""
@@ -211,7 +211,7 @@ def chat(message, history, history_pages):
                     canon_json(tu.input),
                     canon_json(result) if isinstance(result, (dict, list)) else str(result),
                 )
-                answers.append(ui_msg("assistant", format_tool_output(tu.name, result)))
+                answers.append(ui_msg("assistant", format_tool_output(tu.input["purpose"], result)))
                 yield current_history + answers, history_pages, ""
                 tool_results.append(tool_result_block(tu.id, result))
             last_tool_results = [user_tool_results(tool_results)]

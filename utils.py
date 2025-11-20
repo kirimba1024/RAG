@@ -196,6 +196,10 @@ def build_select_tools():
             "input_schema": {
                 "type": "object",
                 "properties": {
+                    "purpose": {
+                        "type": "string",
+                        "description": "Зачем этот SELECT: опиши цель запроса."
+                    },
                     "select": {
                         "type": "string",
                         "description": (
@@ -206,7 +210,7 @@ def build_select_tools():
                         )
                     }
                 },
-                "required": ["select"]
+                "required": ["purpose", "select"]
             }
         })
     return tools
@@ -219,6 +223,10 @@ EXECUTE_COMMAND_TOOL = {
     "input_schema": {
         "type": "object",
         "properties": {
+            "purpose": {
+                "type": "string",
+                "description": "Зачем запускается команда: что хотим узнать."
+            },
             "command": {
                 "type": "string",
                 "description": (
@@ -229,7 +237,7 @@ EXECUTE_COMMAND_TOOL = {
                 )
             }
         },
-        "required": ["command"]
+        "required": ["purpose", "command"]
     }
 }
 
