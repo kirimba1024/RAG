@@ -1,5 +1,6 @@
 import gradio as gr
 import json
+from datetime import date, datetime
 from pathlib import Path
 from typing import Sequence
 from anthropic import Anthropic
@@ -42,7 +43,13 @@ def track_tokens(response):
     TOKEN_STATS["output"] += response.usage.output_tokens
 
 def canon_json(obj) -> str:
-    return json.dumps(obj, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+    return json.dumps(
+        obj,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+        default=str,
+    )
 
 def text_block_cached(value: str) -> TextBlockParam:
     return {"type": "text", "text": value, "cache_control": {"type": "ephemeral"}}
@@ -192,7 +199,9 @@ def chat(message, history, history_pages):
         tool_uses = [b for b in response.content if b.type == "tool_use"]
         if tool_uses:
             logger.info("🔧 Использование инструментов: %s", tool_uses)
-            last_tool_use = [tool_use_msg(tool_uses)]
+            tool_use_message = tool_use_msg(tool_uses)
+            last_tool_use = [tool_use_message]
+            raw.append(tool_use_message)
             input_logs = [format_tool_input(tu.input) for tu in tool_uses]
             if input_logs:
                 answers.append(ui_msg("assistant", "".join(input_logs)))
@@ -214,7 +223,9 @@ def chat(message, history, history_pages):
                 answers.append(ui_msg("assistant", format_tool_output(tu.input["purpose"], result)))
                 yield current_history + answers, history_pages, ""
                 tool_results.append(tool_result_block(tu.id, result))
-            last_tool_results = [user_tool_results(tool_results)]
+            tool_results_message = user_tool_results(tool_results)
+            last_tool_results = [tool_results_message]
+            raw.append(tool_results_message)
         if not tool_uses:
             break
     if raw:
